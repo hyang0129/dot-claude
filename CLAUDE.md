@@ -1,5 +1,9 @@
 # Global Claude Code Instructions
 
+## Modifying Global Config
+
+This file and all files under `~/.claude/commands/` and `~/.claude/guides/` are **symlinked** from the `dot-claude` repo. Do NOT edit them in `~/.claude/` directly. Instead, make changes in the repo at `~/Code Projects/dot-claude/` so they are version-controlled. When creating new skills or guides, write them to the repo and re-run `install.cmd` (or `install.sh`) to symlink them into place.
+
 ## Dev Containers
 
 Before creating or modifying any devcontainer file (`.devcontainer/devcontainer.json`, `Dockerfile`, `initialize.cmd`, `post-create.sh`, `.gitattributes`), you MUST read `~/.claude/guides/devcontainer-guide.md` first. Do not write devcontainer files from memory — the guide contains hard-won fixes for Windows + Docker Desktop + WSL pitfalls that are not obvious.
