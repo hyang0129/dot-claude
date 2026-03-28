@@ -1,0 +1,15 @@
+{
+  "name": "PROJECT_NAME",
+  "build": { "dockerfile": "Dockerfile" },
+  "customizations": {
+    "vscode": {
+      "extensions": ["anthropic.claude-code"]
+    }
+  },
+  "initializeCommand": ".devcontainer\\initialize.cmd",
+  "postCreateCommand": ".devcontainer/post-create.sh",
+  "mounts": [
+    "source=${localEnv:USERPROFILE}\\.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
+  ],
+  "remoteUser": "vscode"
+}

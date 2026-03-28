@@ -1,0 +1,24 @@
+# Global Claude Code Instructions
+
+## Dev Containers
+
+Before creating or modifying any devcontainer file (`.devcontainer/devcontainer.json`, `Dockerfile`, `initialize.cmd`, `post-create.sh`, `.gitattributes`), you MUST read `~/.claude/guides/devcontainer-guide.md` first. Do not write devcontainer files from memory — the guide contains hard-won fixes for Windows + Docker Desktop + WSL pitfalls that are not obvious.
+
+## Pull Requests
+
+Before reviewing or pushing to a PR, you MUST read `~/.claude/guides/pr-guide.md` first. It defines the workflow for tracking review findings and verifying fixes before pushing.
+
+**NEVER use `--admin` to force through a merge.** If a PR cannot be merged due to branch protection (required checks, required reviews, etc.), stop and inform the user — do not bypass protections with `--admin`.
+
+## Long-Running Tasks
+
+For long-running tasks (builds, installs, tests, downloads, etc.), pipe output to a temp log file so progress can be checked incrementally:
+
+```bash
+python train.py 2>&1 | tee /tmp/progress.log
+```
+
+
+## Agent Teams for GitHub Issues
+
+Before spawning an agent team to work on a GitHub issue, you MUST read `~/.claude/guides/agent-team-guide.md` first. It defines tier selection (simple/medium/complex), role assignments, file ownership rules, the task spec template, the ADR gate for complex issues, and the PR checklist.

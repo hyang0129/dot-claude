@@ -1,0 +1,58 @@
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  },
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Glob(**)",
+      "Grep(**)",
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.github.com)",
+      "WebFetch(domain:developer.mozilla.org)",
+      "WebFetch(domain:learn.microsoft.com)",
+      "WebFetch(domain:cmake.org)",
+      "WebFetch(domain:ffmpeg.org)",
+      "WebFetch(domain:docs.live2d.com)",
+      "WebFetch(domain:registry.npmjs.org)",
+      "WebFetch(domain:pypi.org)",
+      "WebFetch(domain:stackoverflow.com)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(file *)",
+      "Bash(which *)",
+      "Bash(where *)",
+      "Bash(type *)",
+      "Bash(echo *)",
+      "Bash(pwd)",
+      "Bash(env)",
+      "Bash(git status*)",
+      "Bash(git log*)",
+      "Bash(git diff*)",
+      "Bash(git branch*)",
+      "Bash(git show*)",
+      "Bash(git remote*)",
+      "Bash(cmake --version)",
+      "Bash(python --version)",
+      "Bash(node --version)",
+      "Bash(npm --version)",
+      "Read(//c/Users/HongM/Code Projects/fastapiclaude//**)"
+    ],
+    "ask": [
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(**/secrets/**)",
+      "Read(**/.ssh/**)",
+      "Read(**/credentials*)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\HongM\\.claude\\projects\\c--Users-HongM-Code-Projects-live2d\\memory",
+      "C:\\Users\\HongM\\.claude"
+    ]
+  }
+}

@@ -1,0 +1,29 @@
+# Runtime state (never version-control)
+sessions/
+projects/
+telemetry/
+debug/
+file-history/
+shell-snapshots/
+backups/
+ide/
+plugins/
+session-env/
+plans/
+todos/
+tasks/
+teams/
+
+# Secrets / auth
+.credentials.json
+mcp-needs-auth-cache.json
+*.tmp
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Memory (per-machine, not portable)
+memory/
+MEMORY.md
