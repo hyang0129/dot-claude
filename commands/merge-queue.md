@@ -109,7 +109,7 @@ Fetch labeled PRs
 
 ```bash
 gh pr list --label "<label>" --state open --base "$DEFAULT_BASE" \
-  --json number,headRefName,baseRefName,title \
+  --json number,headRefName,baseRefName,title,url,body \
   --jq 'sort_by(.number)'
 ```
 
@@ -194,6 +194,7 @@ If merge succeeds:
   ```bash
   gh pr edit <PR_NUMBER> --remove-label "<label>"
   ```
+- Write a merge report (see **Merge Reports** below).
 - Log: `PR #<N>: merged.`
 - Continue to next PR.
 
@@ -233,6 +234,7 @@ If merge succeeds:
   ```bash
   gh pr edit <PR_NUMBER> --remove-label "<label>"
   ```
+- Write a merge report (see **Merge Reports** below).
 - Log: `PR #<N>: rebased and merged.`
 
 If merge fails:
@@ -260,6 +262,29 @@ Proceed to next PR. Step 2a will checkout the next branch.
 ```bash
 git -C "$GIT_ROOT" checkout "$DEFAULT_BASE"
 ```
+
+---
+
+## Merge Reports
+
+After each successful merge, write a short markdown report to `GIT_ROOT/merge-reports/<PR_NUMBER>.md`:
+
+```markdown
+# PR #<number>: <title>
+
+- **PR**: <url>
+- **Branch**: <headRefName>
+- **Merged**: <timestamp>
+- **Method**: <merged | rebased and merged>
+
+## Summary
+
+<1–3 sentence summary of what the PR changed and why, derived from the PR body>
+```
+
+Read the PR `body` (fetched in Step 1) to write the summary. If the body is empty or uninformative, summarize from the PR title instead.
+
+Create the `merge-reports/` directory if it does not exist. These files are written to the working tree — they are **not** committed. The user can review, commit, or discard them.
 
 ---
 
