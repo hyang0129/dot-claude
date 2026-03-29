@@ -72,15 +72,36 @@ The `initialize.cmd` script writes `.gituser.tmp` into `.devcontainer/`. Exclude
 ## Claude Code — Custom Commands (host → container)
 
 Custom commands (`~/.claude/commands/*.md`) live on the Windows host and are not visible
-inside the container unless explicitly mounted. Add this to every `devcontainer.json`
-`mounts` array so commands, `CLAUDE.md`, and settings are all available:
+inside the container unless explicitly mounted. Use a two-mount approach:
 
+1. **Base mount** — `~/.claude/` for runtime state (credentials, sessions, projects, plugins):
 ```json
 "source=${localEnv:USERPROFILE}\\.claude,target=/home/vscode/.claude,type=bind,consistency=cached"
 ```
 
-This is a live bind-mount — edits on either side are immediately visible on the other.
-After adding the mount, **Rebuild Container** to apply it.
+2. **dot-claude repo mount** — the whole repo, bypassing NTFS symlinks that break inside
+   Linux containers (their targets like `/c/Users/...` don't exist):
+```json
+"source=${localEnv:USERPROFILE}\\Code Projects\\dot-claude,target=/home/vscode/.dot-claude,type=bind,consistency=cached"
+```
+
+Then in `post-create.sh`, symlink the tracked files into `~/.claude/`, replacing the broken
+Windows symlinks. Linux-native symlinks work fine inside the container:
+```bash
+DOT_CLAUDE="/home/vscode/.dot-claude"
+if [ -d "$DOT_CLAUDE" ]; then
+  for f in CLAUDE.md settings.json; do
+    ln -sf "$DOT_CLAUDE/$f" "/home/vscode/.claude/$f"
+  done
+  for d in commands guides; do
+    rm -rf "/home/vscode/.claude/$d"
+    ln -sf "$DOT_CLAUDE/$d" "/home/vscode/.claude/$d"
+  done
+fi
+```
+
+To track new files/dirs from `dot-claude`, add them to the loop in `post-create.sh`.
+After adding mounts, **Rebuild Container** to apply.
 
 ## Claude Code Permissions
 
@@ -100,4 +121,5 @@ Enforce line endings to prevent `\r` errors in Linux containers:
 - **Docker Desktop WSL root is only 135MB** — VS Code Server installs accumulate there and never get cleaned up, causing "No space left on device"
 - **`bash` on Windows may resolve to WSL** (not Git Bash), and the docker-desktop distro is Alpine with no `/bin/bash`
 - **Git checks out `.sh` files with CRLF on Windows** by default — Linux sees `bash\r` and fails
+- **Windows NTFS symlinks break inside Linux containers** — targets like `/c/Users/...` don't exist. Fix: bind-mount the `dot-claude` repo and symlink files in `post-create.sh` (Linux symlinks work fine)
 - **Cannot execute scripts from `--mount=type=cache` directories** — BuildKit's overlay fs holds an fd open, causing `ETXTBSY` ("Text file busy"). Fix: `cp` the script to a regular path (e.g. `/tmp/cmake-exec.sh`) and execute from there
