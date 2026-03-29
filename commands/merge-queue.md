@@ -38,18 +38,42 @@ or use `git -C "$GIT_ROOT" <command>`.
 Format is: `/merge-queue [label]`
 - `label`: optional. Default: `approved`. The GitHub label that marks PRs as ready to merge.
 
-### Identify repo
+### Repo detection
 
+Detect the repo:
 ```bash
-gh repo view --json nameWithOwner --jq '.nameWithOwner'
+git remote -v
+gh repo view --json nameWithOwner
 ```
 
-Store as `REPO`.
+From those results, determine the most likely `owner/repo`:
+- If the working directory has exactly one GitHub remote, use it.
+- If there are multiple remotes (e.g. `origin` + `upstream`), prefer `upstream` if present
+  (fork workflow), otherwise prefer `origin`.
+- If there is no git remote or the directory is not a git repo, check whether the conversation
+  context mentions a repo name or URL.
+
+**Always confirm before proceeding.** Present your guess to the user:
+
+```
+Repo detected: <owner/repo> (from <source: git remote origin | git remote upstream | gh repo view | conversation context>)
+
+Proceed with merge queue for <owner/repo>? [yes / no / different-repo]
+```
+
+Wait for the user to confirm or correct before continuing.
+
+If no repo can be guessed at all, ask:
+```
+Which GitHub repo should I process the merge queue for? (e.g. owner/repo)
+```
+
+Once confirmed, set `REPO=<owner/repo>` for all subsequent `gh` calls.
 
 ### Detect base branch
 
 ```bash
-gh repo view --json defaultBranchRef --jq '.defaultBranchRef.name'
+gh repo view "$REPO" --json defaultBranchRef --jq '.defaultBranchRef.name'
 ```
 
 Store as `DEFAULT_BASE`. Typically `main` or `master`.
@@ -108,7 +132,7 @@ Fetch labeled PRs
 ## Step 1 — Fetch labeled PRs
 
 ```bash
-gh pr list --label "<label>" --state open --base "$DEFAULT_BASE" \
+gh pr list --repo "$REPO" --label "<label>" --state open --base "$DEFAULT_BASE" \
   --json number,headRefName,baseRefName,title,url,body \
   --jq 'sort_by(.number)'
 ```
@@ -152,7 +176,7 @@ git -C "$GIT_ROOT" fetch origin "$DEFAULT_BASE"
 Get PR CI status:
 
 ```bash
-gh pr checks <PR_NUMBER> --json name,state,conclusion
+gh pr checks <PR_NUMBER> --repo "$REPO" --json name,state,conclusion
 ```
 
 Classify:
@@ -163,7 +187,7 @@ Classify:
 Get merge readiness:
 
 ```bash
-gh pr view <PR_NUMBER> --json mergeable,mergeStateStatus
+gh pr view <PR_NUMBER> --repo "$REPO" --json mergeable,mergeStateStatus
 ```
 
 - `mergeStateStatus: CLEAN` -> up-to-date, CI green, ready to merge
@@ -186,13 +210,13 @@ gh pr view <PR_NUMBER> --json mergeable,mergeStateStatus
 ## Step 3 — Merge
 
 ```bash
-gh pr merge <PR_NUMBER> --squash --delete-branch
+gh pr merge <PR_NUMBER> --repo "$REPO" --squash --delete-branch
 ```
 
 If merge succeeds:
 - Remove the label:
   ```bash
-  gh pr edit <PR_NUMBER> --remove-label "<label>"
+  gh pr edit <PR_NUMBER> --repo "$REPO" --remove-label "<label>"
   ```
 - Write a merge report (see **Merge Reports** below).
 - Log: `PR #<N>: merged.`
@@ -226,13 +250,13 @@ Invoke `/rebase` to bring it up to date:
 Proceed to merge:
 
 ```bash
-gh pr merge <PR_NUMBER> --squash --delete-branch
+gh pr merge <PR_NUMBER> --repo "$REPO" --squash --delete-branch
 ```
 
 If merge succeeds:
 - Remove the label:
   ```bash
-  gh pr edit <PR_NUMBER> --remove-label "<label>"
+  gh pr edit <PR_NUMBER> --repo "$REPO" --remove-label "<label>"
   ```
 - Write a merge report (see **Merge Reports** below).
 - Log: `PR #<N>: rebased and merged.`
@@ -247,7 +271,7 @@ If merge fails:
 
 - Remove the label:
   ```bash
-  gh pr edit <PR_NUMBER> --remove-label "<label>"
+  gh pr edit <PR_NUMBER> --repo "$REPO" --remove-label "<label>"
   ```
 - Log: `PR #<N>: rebase BLOCKER — label removed. Human intervention required.`
 
