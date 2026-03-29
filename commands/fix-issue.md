@@ -506,16 +506,17 @@ For each new or significantly changed function or class, write a paragraph:
 ### How components interact
 
 If multiple functions or modules were added or changed, describe how they wire together.
-Use an ASCII diagram where the interaction is not obvious from prose alone:
+Use a Mermaid diagram where the interaction is not obvious from prose alone.
+GitHub renders Mermaid natively in markdown.
 
 Example:
-```
-request
-  └─► route_handler()
-        └─► validate_input()          ← new: rejects malformed payloads early
-              └─► process_pipeline()  ← modified: now accepts validated_payload
-                    ├─► step_a()
-                    └─► step_b()      ← new: handles the edge case from the issue
+```mermaid
+graph TD
+    A[request] --> B[route_handler]
+    B --> C["validate_input() — new: rejects malformed payloads early"]
+    C --> D["process_pipeline() — modified: now accepts validated_payload"]
+    D --> E[step_a]
+    D --> F["step_b() — new: handles the edge case from the issue"]
 ```
 
 ### Default execution path
@@ -558,7 +559,7 @@ EOF
 
 **Guidelines for the Documentation Agent:**
 - Write for a senior engineer who has not read the issue. They should understand the full change from the PR body alone.
-- Diagrams are ASCII only. Use them when a call graph, data flow, or state transition is being described — not for trivial single-function changes.
+- Diagrams must use Mermaid (GitHub renders it natively). Use them when a call graph, data flow, or state transition is being described — not for trivial single-function changes.
 - Do not reproduce raw diff. Explain intent and behaviour in prose.
 - Do not pad with boilerplate. If a section does not apply (e.g. no new functions), omit it.
 - Length target: 1–2 pages. Shorter is fine if the change is genuinely simple; do not inflate.
