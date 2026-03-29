@@ -468,3 +468,4 @@ In those cases, present the Human Review Summary as normal and state:
 - Never merge. Never force-push.
 - If `gh` is unavailable, stop and tell the user to install the GitHub CLI.
 - If the working tree has uncommitted changes before starting, stop and warn the user — do not mix pre-existing changes with review fixes.
+- When handing off to a human (blockers, errors, confirmation prompts), always include the PR URL so the user can navigate to it directly.

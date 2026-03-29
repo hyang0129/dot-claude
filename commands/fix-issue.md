@@ -242,14 +242,13 @@ Role: read-only research + produce ADR. No implementation file writes.
    - [ ] ...
    ```
 
-**STOP after the Architect completes.** Present the ADR to the user with one checkbox group per decision:
+**STOP after the Architect completes.** Post the ADR decisions as checkboxes directly on the GitHub issue so the user can review and select options there:
 
-```
+```bash
+gh issue comment <number> --repo <owner/repo> --body "$(cat <<'EOF'
 ## Architecture Decision Record — Review Required
 
-Issue #<number>: <title>
-
-Please select one option per decision, then reply.
+Please select one option per decision by checking the box, then comment "APPROVED" (or "REJECT" to stop).
 
 ---
 
@@ -259,7 +258,7 @@ Please select one option per decision, then reply.
 - [ ] **Option A** — <one-line description> _(recommended)_
 - [ ] **Option B** — <one-line description>
 - [ ] **Option C** — <one-line description> _(if applicable)_
-- [ ] **Other** — I'll describe below
+- [ ] **Other** — describe in a follow-up comment
 
 ---
 
@@ -268,11 +267,23 @@ Please select one option per decision, then reply.
 
 ---
 
-_Reply with your selections. To override with custom instructions, add a note under the relevant decision. Reply REJECT to stop and reopen the issue._
+_Check one box per decision. Add a comment if you chose "Other" or want to override. Comment **APPROVED** when done, or **REJECT** to stop and reopen._
+EOF
+)"
 ```
 
-Do not spawn any implementation agents until the user replies.
-Once approved, update `ISSUE_<number>_ADR.md` status to `ACCEPTED` and revise per any overrides.
+Then inform the user in chat:
+
+```
+Architecture decisions have been posted to issue #<number> as checkboxes.
+Please review and select your preferred options directly on the issue, then comment APPROVED or REJECT.
+```
+
+**Do not spawn any implementation agents until the user has responded on the issue.**
+
+Poll for the user's response by checking issue comments. When a comment containing "APPROVED" or "REJECT" is found:
+- **APPROVED**: read the checkbox states from the ADR comment to determine which options were selected. Update `ISSUE_<number>_ADR.md` status to `ACCEPTED` and revise per any overrides or "Other" comments.
+- **REJECT**: stop and report to the user in chat. Do not proceed with implementation.
 
 **Post approved decisions to the issue:**
 ```bash
@@ -614,3 +625,4 @@ If the PR was not successfully created (push failed, `gh pr create` failed), sto
 - Prefer minimal, targeted changes — do not refactor surrounding code unless it is the direct cause of the issue.
 - Never skip binary checks before committing.
 - If blocked or uncertain, stop and report to the user rather than guessing.
+- When handing off to a human (blockers, errors, confirmation prompts), always include the PR URL so the user can navigate to it directly.

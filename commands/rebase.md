@@ -598,3 +598,4 @@ Action required: resolve manually, then re-run `/rebase`.
 - **Git Operator**: git operations and PR metadata only. No application code fixes.
 - If any agent is uncertain whether a change is within scope, the answer is no — stop and report to the Git Operator, which escalates to BLOCKER if needed.
 - One terminal state per run. Once BLOCKER or READY is declared, no further automated changes are made.
+- When handing off to a human (blockers, errors, confirmation prompts), always include the PR URL so the user can navigate to it directly.
