@@ -65,7 +65,7 @@ Track state:
 
 ## Agent Roles
 
-### Agent 1 — Reviewer
+### Agent 1 — Reviewer (`model: "opus"`)
 
 **Role**: Read-only analysis. Do NOT make any changes to files.
 
@@ -88,7 +88,7 @@ Track state:
 6. Test coverage validity: for new or modified tests, confirm (a) any patched/stubbed symbols are actually imported by the module under test, and (b) behavioral invariants ("X must NOT happen") have explicit negative assertions. A patch on an unused symbol or a missing negative assertion for an invariant is a Major finding.
 7. Output `REVIEW_FINDINGS.md` with all findings organized by severity.
 
-### Agent 2 — Orchestrator
+### Agent 2 — Orchestrator (inherits session model — should be Opus)
 
 **Role**: Plan and manage the fix execution. Does NOT write code directly — only delegates to Fixer agents and commits results.
 
@@ -166,7 +166,7 @@ git push origin <branch>
 
 ---
 
-### Agent 4 — Intent Validator (runs once, after Final Review)
+### Agent 4 — Intent Validator (`model: "opus"`, runs once, after Final Review)
 
 **Role**: Senior engineer/architect cross-check. Read-only. Do NOT make any changes to files.
 
@@ -212,7 +212,7 @@ git push origin <branch>
 
 ---
 
-### Agent 3+ — Fixer (one instance per finding)
+### Agent 3+ — Fixer (`model: "sonnet"`, one instance per finding)
 
 **Role**: Apply exactly one finding's fix. Do NOT review. Do NOT fix other things noticed along the way.
 

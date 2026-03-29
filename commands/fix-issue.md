@@ -137,7 +137,7 @@ where `<slug>` is a 2–4 word kebab-case summary of the issue title.
 
 ## Step 2 — Planning
 
-Regardless of tier, spawn a **Planner agent** first.
+Regardless of tier, spawn a **Planner agent** first (`model: "opus"`).
 
 ### Planner agent instructions
 
@@ -212,7 +212,7 @@ EOF
 
 ## Step 2b — Architecture (Tier 2 with open questions, or Tier 3)
 
-Spawn an **Architect agent**.
+Spawn an **Architect agent** (`model: "opus"`).
 
 ### Architect agent instructions
 
@@ -305,7 +305,7 @@ EOF
 
 Use the task list from `ISSUE_<number>_PLAN.md` (updated with ADR outcomes if Tier 3).
 
-For each task, spawn the assigned agent with the full task spec:
+For each task, spawn the assigned agent with the full task spec. Use `model: "sonnet"` for Coder, Tester, and Integrator agents; use `model: "opus"` for Reviewer agents:
 
 ```
 Issue: #<number> — <title>
@@ -387,7 +387,7 @@ If any check fails: identify the failing file(s), re-assign to the responsible a
 
 ## Step 5 — Reviewer
 
-After all checks pass, spawn the **Reviewer agent**.
+After all checks pass, spawn the **Reviewer agent** (`model: "opus"`).
 
 ### Reviewer agent instructions
 
@@ -428,7 +428,7 @@ Closes #<number>
 
 [one-line summary of each logical change if multiple areas touched]
 
-Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>
+Co-Authored-By: Claude Code <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -469,7 +469,7 @@ EOF
 
 ## Step 6b — PR Documentation Agent
 
-After the PR is open, spawn a **Documentation Agent** to update the PR body with a detailed human-readable report. This runs before `/review-fix` so reviewers have full context when they open the PR.
+After the PR is open, spawn a **Documentation Agent** (`model: "sonnet"`) to update the PR body with a detailed human-readable report. This runs before `/review-fix` so reviewers have full context when they open the PR.
 
 ### Documentation Agent instructions
 

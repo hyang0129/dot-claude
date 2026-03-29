@@ -118,15 +118,19 @@ Orchestrator
 
 ## Role Definitions
 
-| Role | Model tier | Scope | File writes |
-|---|---|---|---|
-| **Orchestrator** | Best available | Full project | No direct writes; delegates |
-| **Architect** | Best available | Read-only research + ADR file | ADR doc only |
-| **Planner** | Same as orchestrator | Read-only research + plan doc | Plan doc only |
-| **Coder** | Mid-tier | Assigned file set only | Yes, owned files only |
-| **Tester** | Mid-tier | Test files only | Yes, test files only |
-| **Integrator** | Mid-tier | Integration branch | Yes, after merge |
-| **Reviewer** | Best available | Read-only | No — returns findings list |
+| Role | Model | `model` param | Scope | File writes |
+|---|---|---|---|---|
+| **Orchestrator** | Opus | _(inherits)_ | Full project | No direct writes; delegates |
+| **Architect** | Opus | `model: "opus"` | Read-only research + ADR file | ADR doc only |
+| **Planner** | Opus | `model: "opus"` | Read-only research + plan doc | Plan doc only |
+| **Coder** | Sonnet | `model: "sonnet"` | Assigned file set only | Yes, owned files only |
+| **Tester** | Sonnet | `model: "sonnet"` | Test files only | Yes, test files only |
+| **Integrator** | Sonnet | `model: "sonnet"` | Integration branch | Yes, after merge |
+| **Reviewer** | Opus | `model: "opus"` | Read-only | No — returns findings list |
+
+When spawning agents via the `Agent` tool, pass the `model` parameter as shown above.
+The orchestrator inherits the session model (should be run on Opus). All other agents
+must have their model set explicitly to avoid inheriting the parent's model.
 
 ---
 

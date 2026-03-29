@@ -69,15 +69,15 @@ If uncommitted changes exist, stop and warn the user — do not proceed.
 
 ## Agent Roles
 
-### Git Operator (orchestrator)
+### Git Operator (orchestrator, inherits session model — should be Opus)
 
 Owns the overall flow. Responsible for all git operations: squash, rebase, push, PR updates, issue comments. Spawns and sequences the other agents. Makes the final terminal-state determination. Does **not** fix application code.
 
-### Merge Conflict Resolver
+### Merge Conflict Resolver (`model: "sonnet"`)
 
 Activated only when `git rebase` hits conflict markers. Resolves conflict markers in the working tree. Scope is strictly limited to lines between `<<<<<<<` and `>>>>>>>`. Does **not** fix logic bugs, test failures, style issues, or anything beyond the conflict markers themselves. Reports each conflict as resolved or unresolvable.
 
-### Senior Review Engineer
+### Senior Review Engineer (`model: "opus"`)
 
 Activated once after rebase completes (conflicts resolved or absent). Read-only — makes **no** file changes. Compares the pre-rebase diff against the post-rebase diff to verify the original fix intent is fully preserved. Reports clean or lists specific intent risks. Findings do not trigger automated fixes — they are either accepted by the Git Operator (trivial/cosmetic) or escalate to BLOCKER.
 
