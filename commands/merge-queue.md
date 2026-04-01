@@ -72,11 +72,21 @@ Once confirmed, set `REPO=<owner/repo>` for all subsequent `gh` calls.
 
 ### Detect base branch
 
+Determine the correct base branch. Prefer `dev` (or `develop`) if it exists on the remote:
+
 ```bash
-gh repo view "$REPO" --json defaultBranchRef --jq '.defaultBranchRef.name'
+git fetch origin
+# Check for dev/develop branches on the remote
+git ls-remote --heads origin dev develop 2>/dev/null
 ```
 
-Store as `DEFAULT_BASE`. Typically `main` or `master`.
+- If `dev` exists on the remote → `DEFAULT_BASE=dev`
+- Else if `develop` exists → `DEFAULT_BASE=develop`
+- Else → fall back to the repo's default branch:
+  ```bash
+  gh repo view "$REPO" --json defaultBranchRef --jq '.defaultBranchRef.name'
+  ```
+  Typically `main` or `master`.
 
 ---
 
