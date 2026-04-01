@@ -94,15 +94,16 @@ Before any git operation, resolve the git working tree root. This is required be
 in dev containers the shell may start at `/workspaces` which is above the repo mount:
 
 ```bash
-GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
-  # Try common dev container mount points
-  for candidate in /workspaces/*; do
+GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$GIT_ROOT" ]; then
+  # Try common locations: dev container mount points, home repos dir, home itself
+  for candidate in /workspaces/* "$HOME"/repos/* "$HOME"/repo/* "$HOME"/projects/* "$HOME"/*; do
     if [ -d "$candidate/.git" ]; then
       GIT_ROOT="$candidate"
       break
     fi
   done
-}
+fi
 ```
 
 If `GIT_ROOT` is still empty, stop and tell the user:
@@ -628,13 +629,13 @@ PR: <url>
 
 ## Handoff to /review-fix
 
-After presenting the Final Summary, automatically invoke `/review-fix` on the branch that was just created:
+After presenting the Final Summary, automatically invoke `/review-fix` on the branch that was just created, passing the repo path explicitly so `/review-fix` can find the git root even when the shell CWD is not inside the repo:
 
 ```
-/review-fix fix/issue-<number>-<slug>
+/review-fix <GIT_ROOT> fix/issue-<number>-<slug>
 ```
 
-Do not wait for the user to invoke it manually. Pass the branch name explicitly so `/review-fix` does not have to re-detect it.
+Do not wait for the user to invoke it manually. Pass both `GIT_ROOT` and the branch name explicitly.
 
 If the PR was not successfully created (push failed, `gh pr create` failed), stop here and do not invoke `/review-fix` — report the failure to the user instead.
 

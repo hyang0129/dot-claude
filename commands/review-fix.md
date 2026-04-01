@@ -8,34 +8,40 @@ Before any git operation, resolve the git working tree root. This is required be
 in dev containers the shell may start at `/workspaces` which is above the repo mount:
 
 ```bash
-GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" || {
-  # Try common dev container mount points
-  for candidate in /workspaces/*; do
+GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
+if [ -z "$GIT_ROOT" ]; then
+  # Try common locations: dev container mount points, home repos dir, home itself
+  for candidate in /workspaces/* "$HOME"/repos/* "$HOME"/repo/* "$HOME"/projects/* "$HOME"/*; do
     if [ -d "$candidate/.git" ]; then
       GIT_ROOT="$candidate"
       break
     fi
   done
-}
+fi
 ```
 
 If `GIT_ROOT` is still empty, stop and tell the user:
-"Could not find a git repository. Make sure you are inside a repo or pass the repo path."
+"Could not find a git repository. Make sure you are inside a repo or pass the repo path as the first argument: `/review-fix <repo-path> [branch] [cycles]`"
+
+If a repo path is passed as an argument (a path starting with `/` or `~`), use it directly as `GIT_ROOT` and shift the remaining arguments for branch/cycles parsing.
 
 **All `git` commands in this spec must run from `GIT_ROOT`** — either `cd "$GIT_ROOT"` first,
 or use `git -C "$GIT_ROOT" <command>`.
 
 ### Parse arguments
 
-Format is: `/review-fix [branch] [cycles]`
+Format is: `/review-fix [repo-path] [branch] [cycles]`
+- `repo-path`: optional absolute path to the repo root (starting with `/` or `~`). Use this when the working directory is not inside the repo (e.g. `/workspaces/hub_6` when the repo is at `~/repos/video_agent_long`). If provided, set `GIT_ROOT` to this path.
 - `branch`: optional branch name. If omitted, use: !`git -C "$GIT_ROOT" branch --show-current`
 - `cycles`: optional integer, default `2`. Must be ≥ 1.
 
 Examples:
 - `/review-fix` → current branch, 2 cycles
+- `/review-fix ~/repos/video_agent_long` → that repo, current branch, 2 cycles
 - `/review-fix feature/xyz` → that branch, 2 cycles
 - `/review-fix feature/xyz 3` → that branch, 3 cycles
 - `/review-fix 3` → if the first argument is a plain integer, treat it as cycles on the current branch
+- `/review-fix ~/repos/video_agent_long feature/xyz 3` → that repo, that branch, 3 cycles
 
 This means the Reviewer runs `cycles + 1` times total: once before each fix cycle, plus a final read-only review at the end. The last review never triggers fixes.
 
