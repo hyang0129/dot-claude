@@ -105,8 +105,15 @@ Git Operator
   │
   ├─ force-push --force-with-lease
   │
-  ├─ Wait for PR CI checks to complete (gh pr checks --watch)
-  │     └─ new failure vs pre-rebase baseline? ──► BLOCKER
+  ├─ Detect CI mode (partition required checks into external vs local)
+  │     │
+  │     ├─ LOCAL_CHECKS? ──► Run locally + upload as commit statuses
+  │     │     └─ new failure? ──► BLOCKER
+  │     │
+  │     ├─ EXTERNAL_CHECKS? ──► Poll gh pr checks --watch
+  │     │     └─ new failure vs pre-rebase baseline? ──► BLOCKER
+  │     │
+  │     └─ (may be both — run local first, then wait for external)
   │
   └─ update PR, post comment ──► READY
 ```
@@ -383,10 +390,57 @@ Rules:
 
 ---
 
-## Step 7b — Wait for PR CI (Git Operator)
+## Step 7a — Detect CI Mode (Git Operator)
 
-After the force push, GitHub Actions (or other CI) will re-run checks against the new
-commit. Poll until all checks reach a terminal state:
+After force-push, determine which required checks are handled by external CI and
+which must be run locally and uploaded as commit statuses. A repo may use external
+CI for some checks and local upload for others.
+
+### Fetch required status checks from branch protection
+
+```bash
+gh api repos/{owner}/{repo}/branches/<BASE>/protection/required_status_checks \
+  --jq '.checks[].context' 2>/dev/null
+```
+
+Store the list as `REQUIRED_CHECKS`. If the endpoint returns 404 or an empty list,
+there are no specific gated checks — skip to Step 7b and just poll whatever CI
+reports.
+
+### Wait for external CI to claim checks
+
+```bash
+sleep 60
+SHA=$(git rev-parse HEAD)
+gh api repos/{owner}/{repo}/commits/$SHA/status --jq '.statuses[].context'
+gh api repos/{owner}/{repo}/commits/$SHA/check-runs --jq '.check_runs[].name'
+```
+
+Combine both lists into `REPORTED_CHECKS` (commit statuses + check runs).
+
+### Partition into external vs local
+
+Compare `REQUIRED_CHECKS` against `REPORTED_CHECKS`:
+
+- `EXTERNAL_CHECKS` = required checks that **do** appear in `REPORTED_CHECKS`
+  (any state — pending, in_progress, success, failure). External CI has claimed these.
+- `LOCAL_CHECKS` = required checks that are **not** in `REPORTED_CHECKS`.
+  No external system is reporting these — the agent must run and upload them.
+
+Possible outcomes:
+- All required checks are external → run Step 7b only
+- All required checks are local → run Step 7b-local only
+- Mixed → run Step 7b-local for `LOCAL_CHECKS` first, then Step 7b to wait for
+  `EXTERNAL_CHECKS` to complete
+
+---
+
+## Step 7b — Wait for External CI (Git Operator)
+
+_Runs when `EXTERNAL_CHECKS` is non-empty (or when no specific checks are gated)._
+
+External CI (GitHub Actions or similar) is handling these checks. Poll until all
+external checks reach a terminal state:
 
 ```bash
 # Poll every 30 seconds, up to 20 minutes
@@ -420,6 +474,77 @@ If any **BLOCKER** condition is found:
 - **Do not modify any source files or test files.**
 
 If all checks pass (or only pre-existing failures remain): proceed to Step 8.
+
+---
+
+## Step 7b-local — Run Checks and Upload Statuses (Git Operator)
+
+_Runs when `LOCAL_CHECKS` is non-empty._
+
+Some or all required branch-protection checks are not provided by external CI. The
+agent must run them locally and post results as GitHub commit statuses so the PR
+can merge. Only run checks listed in `LOCAL_CHECKS` — external checks are handled
+by Step 7b.
+
+### Setup
+
+```bash
+SHA=$(git rev-parse HEAD)
+REPO=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+```
+
+### Run each required check and upload its status
+
+For each check context in `REQUIRED_CHECKS`, map the context name to a local command
+and execute it. Use the repo's toolchain to determine the correct commands. Common
+mappings:
+
+| Context | Typical command |
+|---|---|
+| `ruff-lint` | `ruff check .` |
+| `ruff-format` | `ruff format --check .` |
+| `pytest` | `pytest --ignore=tests/integration -x` (or equivalent non-integration test run) |
+| `mypy` | `mypy .` |
+| _other_ | Infer from toolchain config (`pyproject.toml`, `package.json`, `Makefile`, etc.) |
+
+If you cannot determine the command for a required check, do **not** guess — report
+it as a blocker: "Cannot determine local command for required check `<context>`.
+Configure the check mapping or run it manually."
+
+For each check, run and upload immediately:
+
+```bash
+# Example for a single check — repeat for each REQUIRED_CHECK
+CONTEXT="<check-context-name>"
+DESCRIPTION="<short description of what ran>"
+
+<local-command> 2>&1 | tee /tmp/check-${CONTEXT}.log
+if [ $? -eq 0 ]; then
+  CHECK_STATE=success
+else
+  CHECK_STATE=failure
+fi
+
+gh api repos/$REPO/statuses/$SHA \
+  -f state="$CHECK_STATE" \
+  -f context="$CONTEXT" \
+  -f description="$DESCRIPTION"
+```
+
+### Evaluate results
+
+After all checks are uploaded, evaluate:
+
+| Scenario | Action |
+|---|---|
+| All uploaded checks passed | Proceed to Step 8 |
+| A check failed that was also failing in `PRE_REBASE_CI` | Pre-existing — note it, do not block |
+| A check failed that was passing in `PRE_REBASE_CI` or is new | **Rebase regression → BLOCKER** |
+
+**Rules** (same as external CI):
+- **Do not modify any source files or test files** to fix failures.
+- On BLOCKER, do not update the PR description or post the merge-ready comment.
+- Report the failing check name and relevant log output.
 
 ---
 

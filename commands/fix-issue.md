@@ -50,6 +50,28 @@ Which GitHub repo should I look up issue #<number> in? (e.g. owner/repo)
 
 Once confirmed, set `REPO=<owner/repo>` for all subsequent `gh` calls.
 
+### Base branch detection
+
+Determine the correct base branch. Prefer `dev` (or `develop`) if it exists on the remote:
+
+```bash
+git fetch origin
+# Check for dev/develop branches on the remote
+git ls-remote --heads origin dev develop 2>/dev/null
+```
+
+- If `dev` exists on the remote → `BASE=dev`
+- Else if `develop` exists → `BASE=develop`
+- Else → `BASE=main` (or `master` if `main` does not exist)
+
+Confirm:
+```bash
+git rev-parse --verify origin/$BASE
+```
+
+Set `BASE` for all subsequent commands. **All references to the base branch throughout
+this spec use `<BASE>` — never hardcode `main`.**
+
 ---
 
 Fetch the issue:
@@ -127,8 +149,9 @@ Read the issue title, body, and comments in full. Then assess:
 
 If a `tier` argument was passed, use that. Otherwise state your assessment and the signals that drove it, then proceed.
 
-Create the feature branch:
+Create the feature branch from the base:
 ```bash
+git checkout origin/<BASE>
 git checkout -b fix/issue-<number>-<slug>
 ```
 where `<slug>` is a 2–4 word kebab-case summary of the issue title.
@@ -395,8 +418,8 @@ Role: read-only. Do NOT make any file changes.
 
 1. Read all files changed in this branch:
    ```bash
-   git diff main...HEAD --name-only
-   git diff main...HEAD
+   git diff <BASE>...HEAD --name-only
+   git diff <BASE>...HEAD
    ```
 2. Read the original issue and acceptance criteria from the plan.
 3. For each finding, write:
@@ -437,12 +460,13 @@ Verify PR checklist before pushing:
 - [ ] All binary checks pass
 - [ ] All acceptance criteria from the plan are met
 - [ ] Reviewer findings addressed or documented
-- [ ] Only files in-scope for this issue were modified (`git diff main...HEAD --name-only`)
+- [ ] Only files in-scope for this issue were modified (`git diff <BASE>...HEAD --name-only`)
 
 Push and open PR:
 ```bash
 git push -u origin fix/issue-<number>-<slug>
 gh pr create --repo <owner/repo> \
+  --base <BASE> \
   --title "fix(#<number>): <title>" \
   --body "$(cat <<'EOF'
 Closes #<number>
@@ -477,8 +501,8 @@ Role: read-only research + PR update. Do not modify any source files.
 
 1. Read every file changed in this branch:
    ```bash
-   git diff main...HEAD --name-only
-   git diff main...HEAD
+   git diff <BASE>...HEAD --name-only
+   git diff <BASE>...HEAD
    ```
 2. Read the original issue body and comments in full.
 3. Read `ISSUE_<number>_PLAN.md` and (if present) `ISSUE_<number>_ADR.md`.
