@@ -126,6 +126,62 @@ If there are uncommitted changes, stop and warn the user — do not mix pre-exis
 
 ---
 
+## Handling User Interjections (Scope Creep)
+
+During execution, the user may send follow-up messages that add requirements, change direction,
+or expand the scope beyond what the GitHub issue describes. **The issue is the single source of
+truth for what this session implements.** Handle interjections based on timing:
+
+### Early interjection (before planning begins — still reading/fetching the issue)
+
+If the user adds new requirements or context before the Planner agent has been spawned:
+
+1. **Pause** — do not start planning yet.
+2. Acknowledge what the user said and identify the delta from the issue as written.
+3. Ask:
+   ```
+   It sounds like you want to expand the scope beyond what's currently in issue #<number>.
+
+   The best workflow is:
+   1. Update the issue on GitHub with the additional requirements.
+   2. Start a new /fix-issue session so the Planner works from the complete spec.
+
+   Would you like to update the issue now? I can help draft the additions. Or if this
+   is just clarifying context (not new scope), let me know and I'll proceed as-is.
+   ```
+4. If the user confirms they want to update the issue, help them draft the update and post it
+   via `gh issue edit` or `gh issue comment`. Then **stop** — do not continue with implementation.
+   Tell the user to start a fresh `/fix-issue` session.
+5. If the user says it is just clarification (not new scope), proceed normally.
+
+### Late interjection (during or after planning)
+
+If the user sends new requirements after the Planner has been spawned or after planning is
+complete (during Steps 2–6):
+
+1. **Do not incorporate the new scope.** The plan is already set and agents may already be running.
+2. Push back clearly:
+   ```
+   The plan for issue #<number> is already in progress. Adding new requirements mid-flight
+   risks breaking the structured workflow (validation, review, documentation).
+
+   I'll complete the current scope as planned. For the additional requirements, please either:
+   - Update the issue and run /fix-issue again after this PR lands, or
+   - Open a new issue for the extra work.
+   ```
+3. Continue executing the original plan to completion.
+4. If the user insists, note their request but **still complete the current plan first** — then
+   mention the deferred items in the PR's "Outstanding items" section.
+
+### Why this matters
+
+Incorporating ad-hoc scope changes mid-process causes downstream steps (Documentation Agent,
+Reviewer, PR body generation) to receive an inconsistent view of what was planned vs. what was
+implemented. This leads to missing or incomplete artifacts — the structured pipeline depends on
+the plan being stable from Step 2 onward.
+
+---
+
 ## Step 1 — Assess Complexity
 
 Read the issue title, body, and comments in full. Then assess:
