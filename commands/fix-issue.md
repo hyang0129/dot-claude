@@ -587,18 +587,15 @@ For each new or significantly changed function or class, write a paragraph:
 ### How components interact
 
 If multiple functions or modules were added or changed, describe how they wire together.
-Use a Mermaid diagram where the interaction is not obvious from prose alone.
-GitHub renders Mermaid natively in markdown.
+**Do not write Mermaid diagrams yourself.** Instead, write a plain-English description of the
+interaction (nodes, edges, and annotations) and delegate diagram generation to the Mermaid Agent
+(see below). Insert a placeholder where the diagram should go:
 
-Example:
-```mermaid
-graph TD
-    A[request] --> B[route_handler]
-    B --> C["validate_input() — new: rejects malformed payloads early"]
-    C --> D["process_pipeline() — modified: now accepts validated_payload"]
-    D --> E[step_a]
-    D --> F["step_b() — new: handles the edge case from the issue"]
 ```
+<!-- MERMAID: description of the diagram to generate -->
+```
+
+The Mermaid Agent will replace each placeholder with a validated ```` ```mermaid ```` block.
 
 ### Default execution path
 
@@ -640,11 +637,48 @@ EOF
 
 **Guidelines for the Documentation Agent:**
 - Write for a senior engineer who has not read the issue. They should understand the full change from the PR body alone.
-- Diagrams must use Mermaid (GitHub renders it natively). Use them when a call graph, data flow, or state transition is being described — not for trivial single-function changes.
+- **Never write Mermaid syntax directly.** Use `<!-- MERMAID: ... -->` placeholders and let the Mermaid Agent handle diagram generation. Request a diagram when a call graph, data flow, or state transition is being described — not for trivial single-function changes.
 - Do not reproduce raw diff. Explain intent and behaviour in prose.
 - Do not pad with boilerplate. If a section does not apply (e.g. no new functions), omit it.
 - Length target: 1–2 pages. Shorter is fine if the change is genuinely simple; do not inflate.
 - The "Default execution path" section is required whenever a pipeline, middleware chain, request handler, or multi-step process was modified.
+
+### Mermaid Agent
+
+After the Documentation Agent produces the PR body (with `<!-- MERMAID: ... -->` placeholders),
+spawn a **Mermaid Agent** (`model: "haiku"`) for each placeholder.
+
+#### Mermaid Agent instructions
+
+Role: generate a single valid Mermaid diagram. No file writes, no source code reads.
+
+Input: the plain-English description from the placeholder.
+
+Rules:
+1. Use `graph TD` (top-down) or `graph LR` (left-right) — pick whichever fits the flow better.
+2. **Node labels must be plain text only.** No quotes, no parentheses, no special characters
+   inside `[]` labels. Use short descriptive names:
+   - Good: `A[Generate questions]`
+   - Bad: `A["_generate_questions() — Sonnet: what would a viewer ask?"]`
+3. If a node needs detail (function name, annotation), put it on a separate line using a
+   subgraph label or an annotation comment — not inside the node bracket.
+4. Use `-->` for normal edges and `-.->` for optional/fallback edges. Add edge labels with
+   `-->|label|` when the relationship is not obvious.
+5. Keep diagrams under 15 nodes. If the flow is larger, split into multiple diagrams or
+   simplify by grouping related steps.
+6. **Validate the output**: paste the generated Mermaid into a fenced code block and
+   mentally parse it node-by-node. Every `[` must close with `]`, every `(` with `)`.
+   No unmatched brackets. No backslash escapes.
+
+Output: return **only** the fenced Mermaid code block (` ```mermaid ... ``` `), nothing else.
+
+#### Assembly
+
+After all Mermaid Agents return, replace each `<!-- MERMAID: ... -->` placeholder in the PR body
+with the corresponding diagram. Then run the `gh pr edit` command to update the PR.
+
+If a Mermaid Agent fails or returns invalid syntax, omit that diagram and leave a note:
+`*(Diagram omitted — see implementation walkthrough prose above.)*`
 
 ---
 
