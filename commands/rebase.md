@@ -548,24 +548,20 @@ After all checks are uploaded, evaluate:
 
 ---
 
-### Update PR description
+### Update PR description (append-only)
+
+Read the existing PR body, then **append** rebase metadata at the bottom. Do not
+remove, rewrite, or reorder any existing sections — the body may contain rich content
+(implementation walkthroughs, Mermaid diagrams, architecture notes) added by other
+agents or the user.
 
 ```bash
-gh pr view <PR_NUMBER> --json body --jq '.body'
+EXISTING_BODY=$(gh pr view <PR_NUMBER> --json body --jq '.body')
 ```
 
-Rewrite, preserving the original "What changed" and "Tier / approach" sections:
+Build the rebase appendix:
 
-```bash
-gh pr edit <PR_NUMBER> --body "$(cat <<'EOF'
-Closes #<number>
-
-## What changed
-<preserved from original PR description>
-
-## Tier / approach
-<preserved from original PR description>
-
+```
 ## Acceptance criteria
 <from ISSUE_<number>_PLAN.md — all checked if final review was clean>
 - [x] <criterion>
@@ -583,10 +579,15 @@ Rebased onto `<BASE>` — PR CI passing.
 
 ## Merge instructions
 Merge via **squash merge** (not merge commit or rebase merge).
+```
 
-🤖 Generated with [Claude Code](https://claude.com/claude-code)
-EOF
-)"
+If any of these sections (`Acceptance criteria`, `Review summary`, `History`,
+`Merge instructions`) already exist in `EXISTING_BODY` from a previous rebase run,
+**replace those sections in-place** rather than appending duplicates. All other
+sections in the body must be left untouched.
+
+```bash
+gh pr edit <PR_NUMBER> --body "$UPDATED_BODY"
 ```
 
 ### Post merge-ready comment
