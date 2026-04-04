@@ -112,6 +112,17 @@ If `GIT_ROOT` is still empty, stop and tell the user:
 **All `git` commands in this spec must run from `GIT_ROOT`** — either `cd "$GIT_ROOT"` first,
 or use `git -C "$GIT_ROOT" <command>`.
 
+Set up the `.claude-work/` scratch directory for all planning and review artifacts:
+
+```bash
+mkdir -p "$GIT_ROOT/.claude-work"
+grep -qxF '.claude-work/' "$GIT_ROOT/.git/info/exclude" \
+  || echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
+```
+
+All artifact files produced during this session are written to `$GIT_ROOT/.claude-work/`.
+They are gitignored via `.git/info/exclude` and are never committed or pushed.
+
 Get current repo context:
 ```bash
 git -C "$GIT_ROOT" branch --show-current
@@ -227,7 +238,7 @@ Role: read-only research. No file writes except the plan document.
 2. Search the codebase for all affected files:
    - Grep for symbols, function names, patterns mentioned in the issue
    - Read the files most likely involved
-3. Produce `ISSUE_<number>_PLAN.md` containing:
+3. Produce `.claude-work/ISSUE_<number>_PLAN.md` containing:
    ```markdown
    # Plan: <issue title> (#<number>)
 
@@ -266,7 +277,7 @@ Role: read-only research. No file writes except the plan document.
 4. For **Tier 1**: the plan may show a single wave with one Coder. That is correct — do not add agents for the sake of it.
 5. For **Tier 2 or Tier 3**: list open questions but do not make architecture decisions — those are deferred to the Architect if questions exist.
 
-After the Planner finishes, read `ISSUE_<number>_PLAN.md`.
+After the Planner finishes, read `.claude-work/ISSUE_<number>_PLAN.md`.
 
 **Post pre-implementation status to the issue:**
 ```bash
@@ -298,9 +309,9 @@ Spawn an **Architect agent** (`model: "opus"`).
 
 Role: read-only research + produce ADR. No implementation file writes.
 
-1. Read `ISSUE_<number>_PLAN.md` and the full issue.
+1. Read `.claude-work/ISSUE_<number>_PLAN.md` and the full issue.
 2. For each open question, research options by reading relevant code, docs, and existing patterns.
-3. Produce `ISSUE_<number>_ADR.md`:
+3. Produce `.claude-work/ISSUE_<number>_ADR.md`:
    ```markdown
    # ADR: <issue title> (#<number>)
 
@@ -362,7 +373,7 @@ Please review and select your preferred options directly on the issue, then comm
 **Do not spawn any implementation agents until the user has responded on the issue.**
 
 Poll for the user's response by checking issue comments. When a comment containing "APPROVED" or "REJECT" is found:
-- **APPROVED**: read the checkbox states from the ADR comment to determine which options were selected. Update `ISSUE_<number>_ADR.md` status to `ACCEPTED` and revise per any overrides or "Other" comments.
+- **APPROVED**: read the checkbox states from the ADR comment to determine which options were selected. Update `.claude-work/ISSUE_<number>_ADR.md` status to `ACCEPTED` and revise per any overrides or "Other" comments.
 - **REJECT**: stop and report to the user in chat. Do not proceed with implementation.
 
 **Post approved decisions to the issue:**
@@ -383,14 +394,14 @@ EOF
 
 ## Step 3 — Implementation
 
-Use the task list from `ISSUE_<number>_PLAN.md` (updated with ADR outcomes if Tier 3).
+Use the task list from `.claude-work/ISSUE_<number>_PLAN.md` (updated with ADR outcomes if Tier 3).
 
 For each task, spawn the assigned agent with the full task spec. Use `model: "sonnet"` for Coder, Tester, and Integrator agents; use `model: "opus"` for Reviewer agents:
 
 ```
 Issue: #<number> — <title>
-Plan: ISSUE_<number>_PLAN.md
-ADR: ISSUE_<number>_ADR.md (Tier 3 only, else N/A)
+Plan: .claude-work/ISSUE_<number>_PLAN.md
+ADR: .claude-work/ISSUE_<number>_ADR.md (Tier 3 only, else N/A)
 
 Objective: [from plan task list]
 
@@ -487,7 +498,7 @@ Role: read-only. Do NOT make any file changes.
    **Fix**: concrete recommendation
    ```
 4. Categories to check: correctness, missing tests, security, edge cases, scope creep (changes beyond the issue), breaking changes.
-5. Output `ISSUE_<number>_REVIEW.md`.
+5. Output `.claude-work/ISSUE_<number>_REVIEW.md`.
 
 After the Reviewer finishes:
 - **Critical or major findings**: apply targeted fixes, re-run binary checks, then re-run Reviewer (max 2 review iterations).
@@ -562,7 +573,7 @@ Role: read-only research + PR update. Do not modify any source files.
    git diff <BASE>...HEAD
    ```
 2. Read the original issue body and comments in full.
-3. Read `ISSUE_<number>_PLAN.md` and (if present) `ISSUE_<number>_ADR.md`.
+3. Read `.claude-work/ISSUE_<number>_PLAN.md` and (if present) `.claude-work/ISSUE_<number>_ADR.md`.
 4. Read the surrounding context for every changed file — not just the diff lines, but the full function or class that was modified, and any callers or dependents one level up.
 
 Produce a PR description that is **up to 2 pages** of flowing technical prose. Update the PR:
@@ -622,7 +633,7 @@ Tier <N> — <Planner → Coder → Reviewer | parallel Coders + Integrator | DA
 
 ## Acceptance criteria
 
-<from ISSUE_<number>_PLAN.md>
+<from .claude-work/ISSUE_<number>_PLAN.md>
 - [x] <criterion>
 - [x] <criterion>
 

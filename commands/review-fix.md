@@ -28,6 +28,17 @@ If a repo path is passed as an argument (a path starting with `/` or `~`), use i
 **All `git` commands in this spec must run from `GIT_ROOT`** — either `cd "$GIT_ROOT"` first,
 or use `git -C "$GIT_ROOT" <command>`.
 
+Set up the `.claude-work/` scratch directory for all review artifacts:
+
+```bash
+mkdir -p "$GIT_ROOT/.claude-work"
+grep -qxF '.claude-work/' "$GIT_ROOT/.git/info/exclude" \
+  || echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
+```
+
+All artifact files produced during this session are written to `$GIT_ROOT/.claude-work/`.
+They are gitignored via `.git/info/exclude` and are never committed or pushed.
+
 ### Parse arguments
 
 Format is: `/review-fix [repo-path] [branch] [cycles]`
@@ -92,7 +103,7 @@ Track state:
 4. Scope check: flag anything unrelated to the PR's stated purpose — note it, do not fix it.
 5. Pattern consistency: for any new code that parallels an existing function, endpoint, or migration, identify the closest analogue and confirm the new code replicates its correctness properties — guards, operation ordering, conditional field population, idempotency. Unexplained divergence from an established pattern is a Major finding.
 6. Test coverage validity: for new or modified tests, confirm (a) any patched/stubbed symbols are actually imported by the module under test, and (b) behavioral invariants ("X must NOT happen") have explicit negative assertions. A patch on an unused symbol or a missing negative assertion for an invariant is a Major finding.
-7. Output `REVIEW_FINDINGS.md` with all findings organized by severity.
+7. Output `.claude-work/REVIEW_FINDINGS.md` with all findings organized by severity.
 
 ### Agent 2 — Orchestrator (inherits session model — should be Opus)
 
@@ -102,11 +113,11 @@ Track state:
 
 #### Step 1: Partition findings into fix groups
 
-Read `REVIEW_FINDINGS.md`. Build a dependency graph:
+Read `.claude-work/REVIEW_FINDINGS.md`. Build a dependency graph:
 - Findings are **independent** if they touch different files, or touch the same file but non-overlapping, non-interdependent sections, AND neither finding's fix could invalidate the other.
 - Findings are **dependent** if: they touch the same function/class, one fix changes the signature/interface that another fix relies on, or the logical correctness of one fix depends on the state after another.
 
-Produce a `FIX_PLAN.md`:
+Produce a `.claude-work/FIX_PLAN.md`:
 ```
 ## Fix Plan
 
@@ -139,7 +150,7 @@ For each batch in order:
 
 After each batch completes:
 - Verify no fix in the batch broke another (re-read touched files, run tests if detectable).
-- For every Critical or Major finding, confirm its `FIX_RESULT_*.md` contains an `## Impact Trace` section. If missing, return that finding to the Fixer queue before committing.
+- For every Critical or Major finding, confirm its `.claude-work/FIX_RESULT_*.md` contains an `## Impact Trace` section. If missing, return that finding to the Fixer queue before committing.
 - If a conflict is found, resolve it before proceeding to the next batch.
 
 #### Step 3: Commit after each completed batch
@@ -214,7 +225,7 @@ git push origin <branch>
 
 6. If no concerns are found, output: `No intent risks detected — all automated fixes are consistent with the original PR intent.`
 
-7. Output findings to `INTENT_VALIDATION.md`.
+7. Output findings to `.claude-work/INTENT_VALIDATION.md`.
 
 ---
 
@@ -235,8 +246,8 @@ git push origin <branch>
    **Reason**: <brief rationale>
    ```
 4. After applying, re-read the surrounding code to confirm no new issues introduced.
-5. Impact trace (required for Critical and Major findings): list (a) every caller of the changed function and whether the fix invalidates any assumption it holds, and (b) any callees added or removed and whether their side-effects are still correctly handled. Record this in `FIX_RESULT_<finding-id>.md` under `## Impact Trace`.
-6. Output a brief `FIX_RESULT_<finding-id>.md`:
+5. Impact trace (required for Critical and Major findings): list (a) every caller of the changed function and whether the fix invalidates any assumption it holds, and (b) any callees added or removed and whether their side-effects are still correctly handled. Record this in `.claude-work/FIX_RESULT_<finding-id>.md` under `## Impact Trace`.
+6. Output a brief `.claude-work/FIX_RESULT_<finding-id>.md`:
    - Status: fixed | skipped | blocked
    - Files changed: list
    - Decision made (if any)
@@ -252,10 +263,10 @@ git push origin <branch>
 If `NEEDS_INITIAL_REVIEW = true`, run the Reviewer agent now (before any fix cycle) and post its findings to GitHub as a PR review comment:
 
 ```bash
-gh pr review <pr-number> --comment --body "$(cat REVIEW_FINDINGS_0.md)"
+gh pr review <pr-number> --comment --body "$(cat .claude-work/REVIEW_FINDINGS_0.md)"
 ```
 
-- Save findings to `REVIEW_FINDINGS_0.md` (cycle 0).
+- Save findings to `.claude-work/REVIEW_FINDINGS_0.md` (cycle 0).
 - This is read-only — do NOT fix anything yet.
 - The initial review documents the pre-fix state so reviewers can see what was found before any automated changes.
 - Then proceed to the fix loop starting at `CURRENT_CYCLE = 1`. The cycle-1 Reviewer still runs as normal (it may find fewer issues after the initial review is posted, which is fine).
@@ -271,11 +282,11 @@ CURRENT_CYCLE = 1
 
 ┌─── Repeat while CURRENT_CYCLE ≤ MAX_CYCLES ───────────────────────┐
 │                                                                     │
-│   Reviewer (cycle N) → REVIEW_FINDINGS_<N>.md                      │
+│   Reviewer (cycle N) → .claude-work/REVIEW_FINDINGS_<N>.md                      │
 │        ↓                                                            │
 │   If no findings with severity critical or major → exit loop early  │
 │        ↓                                                            │
-│   Orchestrator reads findings, builds FIX_PLAN_<N>.md              │
+│   Orchestrator reads findings, builds .claude-work/FIX_PLAN_<N>.md              │
 │        ↓                                                            │
 │   ┌── Parallel Batch ──┐     ← spawn N Fixers simultaneously       │
 │   Fixer-1  Fixer-2  Fixer-3                                        │
@@ -295,10 +306,10 @@ CURRENT_CYCLE = 1
 └─────────────────────────────────────────────────────────────────────┘
 
 Final Review (always runs, no fixes):
-   Reviewer → REVIEW_FINDINGS_FINAL.md
+   Reviewer → .claude-work/REVIEW_FINDINGS_FINAL.md
         ↓
 Intent Validation (always runs, no fixes):
-   Intent Validator → INTENT_VALIDATION.md
+   Intent Validator → .claude-work/INTENT_VALIDATION.md
         ↓
    Human Review Summary presented
 ```
@@ -317,8 +328,10 @@ After the Final Review and Intent Validation complete, commit any remaining chan
 produced during the review-fix process (artifact files, residual edits, etc.) and push:
 
 ```bash
-git -C "$GIT_ROOT" add -A
-git -C "$GIT_ROOT" diff --cached --quiet || git -C "$GIT_ROOT" commit -m "chore: review-fix artifacts and final adjustments
+# Add only tracked (source) file changes — artifact files in .claude-work/ are
+# gitignored via .git/info/exclude and are intentionally excluded.
+git -C "$GIT_ROOT" add -u
+git -C "$GIT_ROOT" diff --cached --quiet || git -C "$GIT_ROOT" commit -m "chore: review-fix final adjustments
 
 Auto-generated by review-fix loop."
 git -C "$GIT_ROOT" push origin <branch>
@@ -326,6 +339,8 @@ git -C "$GIT_ROOT" push origin <branch>
 
 Rules:
 - Only commit if there are staged changes (`git diff --cached --quiet` exits non-zero).
+- Use `git add -u` (tracked files only), never `git add -A` — artifact files live in
+  `.claude-work/` and must not be committed.
 - This ensures nothing is left uncommitted/unpushed before handing off to `/rebase`.
 - If the push fails, report the error to the user and do NOT proceed to `/rebase`.
 
@@ -381,7 +396,7 @@ Findings still present after all cycles: requires human context, architectural d
 - Status: clean | <N> risk(s) found
 - [high] IV-1: <title> — <one-line summary of risk>
 - [medium] IV-2: <title> — <one-line summary of risk>
-(List all findings from INTENT_VALIDATION.md, or "No intent risks detected." if clean.)
+(List all findings from .claude-work/INTENT_VALIDATION.md, or "No intent risks detected." if clean.)
 ```
 
 Finding IDs use the format `F-<cycle>-<number>` (e.g. `F-1-3` = cycle 1, finding 3).
@@ -395,7 +410,7 @@ to the PR as a comment. This comment serves as the authoritative record of the r
 run and is what `/rebase` reads during its pre-flight — it does not rely on local artifact
 files being present.
 
-Compose the summary from `REVIEW_FINDINGS_FINAL.md` and `INTENT_VALIDATION.md`:
+Compose the summary from `.claude-work/REVIEW_FINDINGS_FINAL.md` and `.claude-work/INTENT_VALIDATION.md`:
 
 ```bash
 gh pr comment <pr-number> --body "$(cat <<'EOF'
@@ -420,15 +435,15 @@ gh pr comment <pr-number> --body "$(cat <<'EOF'
 | F-1-3 | minor | <title> | skipped — out of scope |
 
 ### Outstanding findings (not fixed)
-<List any critical/major/minor findings still present in REVIEW_FINDINGS_FINAL.md.
+<List any critical/major/minor findings still present in .claude-work/REVIEW_FINDINGS_FINAL.md.
 If none: "None — all actionable findings resolved.">
 
 ### Decisions made during fixes
-<For each decision recorded in FIX_RESULT_*.md — list the finding ID, the options
+<For each decision recorded in .claude-work/FIX_RESULT_*.md — list the finding ID, the options
 considered, and the choice made. If none: omit this section.>
 
 ### Intent validation
-<Paste the full content of INTENT_VALIDATION.md, or "No intent risks detected." if clean.>
+<Paste the full content of .claude-work/INTENT_VALIDATION.md, or "No intent risks detected." if clean.>
 
 ---
 <!-- review-fix-summary-end -->
@@ -440,7 +455,7 @@ Rules:
 - The `<!-- review-fix-summary -->` and `<!-- review-fix-summary-end -->` HTML comment tags are required — `/rebase` uses them to locate this comment via `gh pr view`.
 - Post this comment even if the final review is clean — `/rebase` needs the sentinel to confirm `/review-fix` ran.
 - Do not truncate the intent validation section — paste it in full.
-- If `INTENT_VALIDATION.md` does not exist, write "Intent validation: not run."
+- If `.claude-work/INTENT_VALIDATION.md` does not exist, write "Intent validation: not run."
 
 ---
 

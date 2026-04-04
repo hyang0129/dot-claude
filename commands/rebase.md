@@ -36,6 +36,17 @@ If `GIT_ROOT` is still empty, stop and tell the user:
 **All `git` commands in this spec must run from `GIT_ROOT`** — either `cd "$GIT_ROOT"` first,
 or use `git -C "$GIT_ROOT" <command>`.
 
+Set up the `.claude-work/` scratch directory for all rebase artifacts:
+
+```bash
+mkdir -p "$GIT_ROOT/.claude-work"
+grep -qxF '.claude-work/' "$GIT_ROOT/.git/info/exclude" \
+  || echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
+```
+
+All artifact files produced during this session are written to `$GIT_ROOT/.claude-work/`.
+They are gitignored via `.git/info/exclude` and are never committed or pushed.
+
 ### Parse arguments
 
 Format is: `/rebase [branch] [base-branch]`
@@ -174,18 +185,16 @@ proceed. CI will be evaluated after the force push in Step 7b.
 
 ## Step 2 — Inventory + Remove Artifacts (Git Operator)
 
-### List artifact files
-
-```bash
-git diff <BASE>...HEAD --name-only
-```
-
-Identify files matching these patterns — they are planning/review artifacts that must not land on the base branch:
-- `ISSUE_*_PLAN.md`, `ISSUE_*_ADR.md`, `ISSUE_*_REVIEW.md`
-- `REVIEW_FINDINGS*.md`, `FIX_PLAN*.md`, `FIX_RESULT_*.md`
-- `INTENT_VALIDATION.md`, `REBASE_INTENT_REVIEW.md`, `CONFLICT_RESOLUTION.md`
+Artifacts from `fix-issue` and `review-fix` are written to `.claude-work/` and are
+gitignored via `.git/info/exclude` — they are never committed, so no `git rm` or
+removal commit is needed. This step just shows what is present and cleans the directory.
 
 ### Present inventory to the user
+
+```bash
+git -C "$GIT_ROOT" log --oneline origin/<BASE>...HEAD
+ls "$GIT_ROOT/.claude-work/" 2>/dev/null || echo "(no artifacts found)"
+```
 
 ```
 ## Rebase preparation: <BRANCH> → <BASE>
@@ -196,7 +205,7 @@ Identify files matching these patterns — they are planning/review artifacts th
   111aaaa  fix(review): address F-1-1, F-1-2
   222bbbb  fix(review): address F-2-1
 
-### Artifact files to remove (<N>)
+### Artifact files in .claude-work/ (<N>)
   ISSUE_42_PLAN.md
   REVIEW_FINDINGS_1.md
   FIX_RESULT_F-1-1.md
@@ -211,15 +220,7 @@ Branch will be squash-merged — individual commit history is discarded at merge
 ### Remove artifact files
 
 ```bash
-git rm <artifact-file> [...]
-```
-
-If any artifact was never git-tracked, delete it from disk only.
-
-Commit the removals:
-```bash
-git add -u
-git commit -m "chore: remove fix-issue planning artifacts"
+rm -rf "$GIT_ROOT/.claude-work"
 ```
 
 ---
@@ -269,7 +270,7 @@ For each conflicted file:
    **Why unresolvable**: <explanation of incompatibility>
    ```
 
-5. Output `CONFLICT_RESOLUTION.md` with all findings.
+5. Output `.claude-work/CONFLICT_RESOLUTION.md` with all findings.
 
 6. If all conflicts resolved: `git rebase --continue`
    If any unresolvable: `git rebase --abort` and return UNRESOLVABLE status to Git Operator.
@@ -280,7 +281,7 @@ For each conflicted file:
 
 ### Git Operator: handle Conflict Resolver result
 
-- **All resolved**: read `CONFLICT_RESOLUTION.md`, confirm no unresolvable entries, proceed to Step 4.
+- **All resolved**: read `.claude-work/CONFLICT_RESOLUTION.md`, confirm no unresolvable entries, proceed to Step 4.
 - **Any unresolvable**: → **BLOCKER** (see Terminal States).
 
 ---
@@ -338,13 +339,13 @@ Spawn the **Senior Review Engineer** after the rebase is clean.
 
 6. If no concerns: output `No intent risks detected.`
 
-7. Write `REBASE_INTENT_REVIEW.md`.
+7. Write `.claude-work/REBASE_INTENT_REVIEW.md`.
 
 ---
 
 ### Git Operator: handle Senior Review Engineer result
 
-Read `REBASE_INTENT_REVIEW.md`.
+Read `.claude-work/REBASE_INTENT_REVIEW.md`.
 
 - **No findings / low-risk only**: accept and proceed to Step 5. Note low-risk findings in the PR comment.
 - **Medium-risk findings**: present to the user with recommended actions. Wait for user reply — user may accept or declare BLOCKER.
@@ -563,7 +564,7 @@ Build the rebase appendix:
 
 ```
 ## Acceptance criteria
-<from ISSUE_<number>_PLAN.md — all checked if final review was clean>
+<from .claude-work/ISSUE_<number>_PLAN.md — all checked if final review was clean>
 - [x] <criterion>
 - [x] <criterion>
 
@@ -600,7 +601,7 @@ Branch `<BRANCH>` has been rebased onto `<BASE>`.
 
 **Squash strategy**: <description>
 **Conflicts**: <N resolved, or "none">
-**Intent validation**: <clean | N low-risk notes — see REBASE_INTENT_REVIEW.md>
+**Intent validation**: <clean | N low-risk notes — see .claude-work/REBASE_INTENT_REVIEW.md>
 **PR CI**: all checks passing
 
 Merge via **squash merge** when ready. No further automated changes will be made to this branch.
@@ -636,7 +637,7 @@ Branch:   <BRANCH>
 Base:     <BASE>
 Squash:   <A / B / C>
 Commits:  <N before> → <N after>
-Artifacts removed: <N files>
+Artifacts cleaned: .claude-work/ removed
 Conflicts resolved: <N, or "none">
 Intent validation: <clean / N low-risk notes>
 PR CI: all checks passing
@@ -678,7 +679,7 @@ Theirs: <quoted>
 Why: <explanation>
 
 ### Intent risk (high)
-<paste finding from REBASE_INTENT_REVIEW.md>
+<paste finding from .claude-work/REBASE_INTENT_REVIEW.md>
 
 ### CI regression after rebase
 Failed check: <name>
