@@ -2,51 +2,61 @@
 setlocal enabledelayedexpansion
 
 REM Install dot-claude repo into %USERPROFILE%\.claude
-REM Creates symlinks (requires admin or Developer Mode enabled)
+REM Copies files from the repo so no symlinks or admin rights are needed.
+REM Handles broken symlinks left over from dev container setups.
 
 set "SCRIPT_DIR=%~dp0"
 set "TARGET=%USERPROFILE%\.claude"
 
-if not exist "%TARGET%\commands" mkdir "%TARGET%\commands"
-if not exist "%TARGET%\guides" mkdir "%TARGET%\guides"
+if not exist "%TARGET%" mkdir "%TARGET%"
 
 echo Installing dot-claude from %SCRIPT_DIR%
 echo.
 
-REM CLAUDE.md
-call :linkfile "%SCRIPT_DIR%CLAUDE.md" "%TARGET%\CLAUDE.md"
+REM --- Helper: remove target if it exists (file, symlink, or broken symlink) ---
+REM Windows "copy /y" cannot overwrite broken symlinks, so we delete first.
 
-REM settings.json
-call :linkfile "%SCRIPT_DIR%settings.json" "%TARGET%\settings.json"
-
-REM Commands
-echo Commands:
-for %%f in ("%SCRIPT_DIR%commands\*.md") do (
-    call :linkfile "%%f" "%TARGET%\commands\%%~nxf"
+REM --- Top-level files ---
+for %%f in (CLAUDE.md settings.json) do (
+    if exist "%TARGET%\%%f" del /f /q "%TARGET%\%%f" 2>nul
+    REM Also try removing as a broken symlink (del may miss dangling symlinks)
+    if exist "%TARGET%\%%f" rmdir "%TARGET%\%%f" 2>nul
+    copy /y "%SCRIPT_DIR%%%f" "%TARGET%\%%f" >nul
+    echo   copied %%f
 )
 
-REM Guides
+REM --- Commands ---
+echo.
+echo Commands:
+REM Replace broken symlink dir with a real directory
+if exist "%TARGET%\commands" (
+    REM Check if it's a symlink (junction/symlink dir) — rmdir removes symlink without deleting target
+    dir /al "%TARGET%\commands" >nul 2>nul && (
+        rmdir "%TARGET%\commands" 2>nul
+    )
+)
+if not exist "%TARGET%\commands" mkdir "%TARGET%\commands"
+for %%f in ("%SCRIPT_DIR%commands\*.md") do (
+    if exist "%TARGET%\commands\%%~nxf" del /f /q "%TARGET%\commands\%%~nxf" 2>nul
+    copy /y "%%f" "%TARGET%\commands\%%~nxf" >nul
+    echo   copied commands\%%~nxf
+)
+
+REM --- Guides ---
+echo.
 echo Guides:
+REM Replace broken symlink dir with a real directory
+if exist "%TARGET%\guides" (
+    dir /al "%TARGET%\guides" >nul 2>nul && (
+        rmdir "%TARGET%\guides" 2>nul
+    )
+)
+if not exist "%TARGET%\guides" mkdir "%TARGET%\guides"
 for %%f in ("%SCRIPT_DIR%guides\*.md") do (
-    call :linkfile "%%f" "%TARGET%\guides\%%~nxf"
+    if exist "%TARGET%\guides\%%~nxf" del /f /q "%TARGET%\guides\%%~nxf" 2>nul
+    copy /y "%%f" "%TARGET%\guides\%%~nxf" >nul
+    echo   copied guides\%%~nxf
 )
 
 echo.
-echo Done. Runtime dirs (sessions, projects, etc.) are untouched.
-goto :eof
-
-:linkfile
-set "src=%~1"
-set "dst=%~2"
-if exist "%dst%" (
-    echo   backup: %dst% -^> %dst%.bak
-    move /y "%dst%" "%dst%.bak" >nul 2>&1
-)
-mklink "%dst%" "%src%" >nul 2>&1
-if errorlevel 1 (
-    echo   copy:   %dst% (symlink failed, copying instead)
-    copy /y "%src%" "%dst%" >nul
-) else (
-    echo   linked: %dst% -^> %src%
-)
-goto :eof
+echo Done.
