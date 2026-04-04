@@ -10,8 +10,8 @@ in dev containers the shell may start at `/workspaces` which is above the repo m
 ```bash
 GIT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
 if [ -z "$GIT_ROOT" ]; then
-  # Try common locations: dev container mount points, home repos dir, home itself
-  for candidate in /workspaces/* "$HOME"/repos/* "$HOME"/repo/* "$HOME"/projects/* "$HOME"/*; do
+  # Try common locations: dev container mount points (1 and 2 levels deep), home repos dir, home itself
+  for candidate in /workspaces/* /workspaces/*/* "$HOME"/repos/* "$HOME"/repo/* "$HOME"/projects/* "$HOME"/*; do
     if [ -d "$candidate/.git" ]; then
       GIT_ROOT="$candidate"
       break
@@ -32,7 +32,7 @@ or use `git -C "$GIT_ROOT" <command>`.
 
 Format is: `/review-fix [repo-path] [branch] [cycles]`
 - `repo-path`: optional absolute path to the repo root (starting with `/` or `~`). Use this when the working directory is not inside the repo (e.g. `/workspaces/hub_6` when the repo is at `~/repos/video_agent_long`). If provided, set `GIT_ROOT` to this path.
-- `branch`: optional branch name. If omitted, use: !`git -C "$GIT_ROOT" branch --show-current`
+- `branch`: optional branch name. If omitted, use: `git -C "$GIT_ROOT" branch --show-current` (only after `GIT_ROOT` is confirmed non-empty)
 - `cycles`: optional integer, default `2`. Must be ≥ 1.
 
 Examples:
