@@ -52,7 +52,7 @@ Once confirmed, set `REPO=<owner/repo>` for all subsequent `gh` calls.
 
 ### Base branch detection
 
-Determine the correct base branch. Prefer `dev` (or `develop`) if it exists on the remote:
+Determine the correct base branch. **Always prefer `dev` (or `develop`) over `main` for development work** — even if `main` is the GitHub default branch. `dev` is where feature branches are merged; `main` is for releases only.
 
 ```bash
 git fetch origin
@@ -134,6 +134,16 @@ Verify the working tree is clean:
 git status --short
 ```
 If there are uncommitted changes, stop and warn the user — do not mix pre-existing changes with issue work.
+
+Sync to the base branch and create the feature branch now, before any codebase research:
+```bash
+git -C "$GIT_ROOT" fetch origin
+git -C "$GIT_ROOT" checkout origin/<BASE>
+git -C "$GIT_ROOT" checkout -b fix/issue-<number>-<slug>
+```
+where `<slug>` is a 2–4 word kebab-case summary of the issue title.
+
+All Planner codebase research happens from this branch (= latest `origin/<BASE>`), never from whatever branch was active before.
 
 ---
 
@@ -217,13 +227,6 @@ Read the issue title, body, and comments in full. Then assess:
 
 If a `tier` argument was passed, use that. Otherwise state your assessment and the signals that drove it, then proceed.
 
-Create the feature branch from the base:
-```bash
-git checkout origin/<BASE>
-git checkout -b fix/issue-<number>-<slug>
-```
-where `<slug>` is a 2–4 word kebab-case summary of the issue title.
-
 ---
 
 ## Step 2 — Planning
@@ -235,7 +238,10 @@ Regardless of tier, spawn a **Planner agent** first (`model: "opus"`).
 Role: read-only research. No file writes except the plan document.
 
 1. Read the issue (already fetched above — pass it in full).
-2. Search the codebase for all affected files:
+2. Before any codebase research, read the codebase index files if present:
+   - If `.codesight/CODESIGHT.md` exists at `$GIT_ROOT`, read it in full. It provides a high-level map of the codebase architecture and module responsibilities — use it to orient all subsequent file searches.
+   - If `docs/agent_index.md` exists at `$GIT_ROOT`, read it in full. Use it to identify existing capabilities relevant to the issue — if a match is found, the plan must use that capability rather than reimplementing it.
+3. Search the codebase for all affected files:
    - Grep for symbols, function names, patterns mentioned in the issue
    - Read the files most likely involved
 3. Produce `.claude-work/ISSUE_<number>_PLAN.md` containing:
@@ -565,7 +571,7 @@ After the PR is open, spawn a **Documentation Agent** (`model: "sonnet"`) to upd
 
 ### Documentation Agent instructions
 
-Role: read-only research + PR update. Do not modify any source files.
+Role: read-only research + agent doc updates + PR update. Do not modify any source files.
 
 1. Read every file changed in this branch:
    ```bash
@@ -575,6 +581,26 @@ Role: read-only research + PR update. Do not modify any source files.
 2. Read the original issue body and comments in full.
 3. Read `.claude-work/ISSUE_<number>_PLAN.md` and (if present) `.claude-work/ISSUE_<number>_ADR.md`.
 4. Read the surrounding context for every changed file — not just the diff lines, but the full function or class that was modified, and any callers or dependents one level up.
+
+**Agent-facing documentation (do this before the PR update):**
+
+If `docs/agent_index.md` does not exist at `$GIT_ROOT`, skip this section entirely.
+
+If it exists:
+- For any new reusable capability introduced by this PR, add an entry to `docs/agent_index.md`:
+  ```markdown
+  ## <Capability Name>
+  Path: `<path to main file or directory>`
+  Doc: `docs/modules/<name>.md`
+  Tags: <comma-separated terms a future agent would search for>
+  ```
+- For any existing capability that was modified, updated, or superseded: edit the existing entry in place — update the path, tags, or doc pointer as needed. Do not append a duplicate.
+- Create or update `docs/modules/<name>.md` for each affected capability. Contents: non-obvious usage, extension pattern, constraints, what not to do. Do not summarise what the code already shows.
+- Commit these changes before updating the PR body:
+  ```bash
+  git add docs/agent_index.md docs/modules/
+  git commit -m "docs: update agent index for issue #<number>"
+  ```
 
 Produce a PR description that is **up to 2 pages** of flowing technical prose. Update the PR:
 

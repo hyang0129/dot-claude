@@ -1,5 +1,9 @@
 # Global Claude Code Instructions
 
+## Starting Work in a Repo
+
+At the start of any task in a repository, read the repo's `CLAUDE.md` (if it exists) before doing anything else. This file contains project-specific instructions, conventions, and constraints that override defaults. Use `Glob` to check for `CLAUDE.md` at the repo root.
+
 ## Modifying Global Config
 
 This file and all files under `~/.claude/commands/` and `~/.claude/guides/` are **symlinked** from the `dot-claude` repo. Do NOT edit them in `~/.claude/` directly. Instead, make changes in the repo at `~/Code Projects/dot-claude/` so they are version-controlled. When creating new skills or guides, write them to the repo and re-run `install.cmd` (or `install.sh`) to symlink them into place.

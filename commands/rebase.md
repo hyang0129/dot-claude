@@ -232,6 +232,24 @@ git fetch origin
 git rebase origin/<BASE>
 ```
 
+**If the output is "Already up to date" / "Current branch … is up to date":**
+The branch has no new base commits to absorb — the diff is identical to before, so intent validation and a force-push would be no-ops. Exit early:
+
+```
+## rebase complete — READY (already up to date)
+
+Branch:  <BRANCH>
+Base:    <BASE>
+Result:  Branch was already up to date — no rebase performed, no push needed.
+
+PR: <url>
+Status: READY — awaiting human review, then squash merge
+```
+
+No PR comment is posted and no force-push is made. Stop here.
+
+---
+
 If the rebase exits cleanly (no conflicts): proceed directly to Step 4.
 
 If conflicts are reported: pause all other work and spawn the **Merge Conflict Resolver**.
