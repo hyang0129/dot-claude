@@ -2,13 +2,18 @@
 
 ## Setup
 
-Parse arguments — format is: `/fix-issue <issue> [tier]`
+Parse arguments — format is: `/fix-issue <issue> [tier] [--worktree]`
 - `issue`: required. GitHub issue number (e.g. `42`) or full URL.
 - `tier`: optional override: `1`, `2`, or `3`. If omitted, tier is auto-detected.
+- `--worktree`: optional flag. If present, create a `git worktree` for the feature branch instead of checking it out in the main repo. The worktree is created as a sibling directory (`../repo-name-issue-<number>/`). Useful when multiple issues are being worked in parallel or when the main repo must stay on its current branch.
+
+Strip `--worktree` from the argument list before parsing `issue` and `tier`. Set `WORKTREE_MODE=true` if the flag was present, otherwise `WORKTREE_MODE=false`.
 
 Examples:
-- `/fix-issue 42` → fetch issue #42, auto-detect tier
+- `/fix-issue 42` → fetch issue #42, auto-detect tier, normal checkout
 - `/fix-issue 42 2` → force Tier 2 regardless of auto-detection
+- `/fix-issue 42 --worktree` → fetch issue #42, auto-detect tier, use a git worktree
+- `/fix-issue 42 2 --worktree` → force Tier 2, use a git worktree
 - `/fix-issue https://github.com/org/repo/issues/42` → full URL form
 
 Read the agent team guide before doing anything else:
@@ -135,13 +140,28 @@ git status --short
 ```
 If there are uncommitted changes, stop and warn the user — do not mix pre-existing changes with issue work.
 
-Sync to the base branch and create the feature branch now, before any codebase research:
+Sync to the base branch and create the feature branch now, before any codebase research.
+
+`<slug>` is a 2–4 word kebab-case summary of the issue title.
+
+**Normal mode** (`WORKTREE_MODE=false`):
 ```bash
 git -C "$GIT_ROOT" fetch origin
 git -C "$GIT_ROOT" checkout origin/<BASE>
 git -C "$GIT_ROOT" checkout -b fix/issue-<number>-<slug>
+WORK_DIR="$GIT_ROOT"
 ```
-where `<slug>` is a 2–4 word kebab-case summary of the issue title.
+
+**Worktree mode** (`WORKTREE_MODE=true`):
+```bash
+git -C "$GIT_ROOT" fetch origin
+WORKTREE_PATH="$(dirname "$GIT_ROOT")/$(basename "$GIT_ROOT")-issue-<number>"
+git -C "$GIT_ROOT" worktree add "$WORKTREE_PATH" \
+  -b fix/issue-<number>-<slug> origin/<BASE>
+WORK_DIR="$WORKTREE_PATH"
+```
+
+In both modes, `WORK_DIR` is the directory agents and all subsequent `git` commands operate from. After this point, use `git -C "$WORK_DIR"` (not `$GIT_ROOT`) for all branch-level operations (diff, add, commit, push). Artifacts always go to `$GIT_ROOT/.claude-work/` regardless of mode — this is the shared backing store.
 
 All Planner codebase research happens from this branch (= latest `origin/<BASE>`), never from whatever branch was active before.
 
@@ -729,6 +749,7 @@ Present to the user:
 Branch: fix/issue-<number>-<slug>
 Tier: <1|2|3> — <rationale>
 PR: <url>
+[Worktree: <WORKTREE_PATH> — remove after merge: git -C "$GIT_ROOT" worktree remove <WORKTREE_PATH>]
 
 ### Agents used
 - Planner
@@ -751,20 +772,6 @@ PR: <url>
 ### Outstanding items
 [anything not resolved, or "None"]
 ```
-
----
-
-## Handoff to /review-fix
-
-After presenting the Final Summary, automatically invoke `/review-fix` on the branch that was just created, passing the repo path explicitly so `/review-fix` can find the git root even when the shell CWD is not inside the repo:
-
-```
-/review-fix <GIT_ROOT> fix/issue-<number>-<slug>
-```
-
-Do not wait for the user to invoke it manually. Pass both `GIT_ROOT` and the branch name explicitly.
-
-If the PR was not successfully created (push failed, `gh pr create` failed), stop here and do not invoke `/review-fix` — report the failure to the user instead.
 
 ---
 

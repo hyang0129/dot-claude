@@ -459,26 +459,6 @@ Rules:
 
 ---
 
-## Handoff to /rebase
-
-After presenting the Human Review Summary, automatically invoke `/rebase` on the same branch:
-
-```
-/rebase <branch>
-```
-
-Do not wait for the user to invoke it manually. Pass the branch name explicitly.
-
-**Do not invoke `/rebase` if any of the following are true** — stop and report to the user instead:
-- Any batch failed its tests and was not committed (listed under "Failed Batches — needs manual attention")
-- The final push (`git push origin <branch>`) failed
-- The intent validator found high-risk findings that were not resolved
-
-In those cases, present the Human Review Summary as normal and state:
-```
-/rebase not invoked — one or more blockers require human attention before rebasing (see above).
-```
-
 ---
 
 ## Constraints (all agents)
