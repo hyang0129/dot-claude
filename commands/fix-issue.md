@@ -593,6 +593,8 @@ After the PR is open, spawn a **Documentation Agent** (`model: "sonnet"`) to upd
 
 Role: read-only research + agent doc updates + PR update. Do not modify any source files.
 
+> **Intermediate artifacts:** Writing intermediate files before committing to git is not preferred. If the agent does need to stage notes or drafts, it must write them under `.claude-work/` (e.g. `.claude-work/ISSUE_<number>_doc_draft.md`). Never write scratch files outside `.claude-work/`.
+
 1. Read every file changed in this branch:
    ```bash
    git diff <BASE>...HEAD --name-only
