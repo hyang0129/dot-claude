@@ -80,6 +80,19 @@ Track state:
 
 ---
 
+## Subagent Context Bootstrap
+
+When spawning any subagent that reads or modifies source code (Reviewer, Fixer, Intent Validator), prepend these instructions to its prompt:
+
+> **Context bootstrap** (do this before your main task):
+> 1. Read `~/.claude/CLAUDE.md` (global instructions) and `$GIT_ROOT/CLAUDE.md` (repo instructions) if they exist. Follow all instructions — repo instructions override global ones.
+> 2. Read codebase index files if present:
+>    - `.codesight/CODESIGHT.md` at `$GIT_ROOT`
+>    - `docs/agent_index.md` at `$GIT_ROOT`
+>    - If no agent index was found at the above path, glob for `**/agent_index.md` at `$GIT_ROOT` and read any match.
+
+---
+
 ## Agent Roles
 
 ### Agent 1 — Reviewer (`model: "opus"`)

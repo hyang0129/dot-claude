@@ -102,6 +102,19 @@ The orchestrator reads the handoff and sets `GIT_ROOT`, `DEV_BASE`, and `EPIC_BR
 
 The decomposition of an epic into sub-issues is a critical decision that shapes the entire implementation. A single agent's perspective is insufficient — different concerns (architecture, testing, sequencing, risk) must be weighed against each other.
 
+### Subagent Context Bootstrap
+
+When spawning any subagent that reads or modifies source code (Research Agent, Planning Team agents, Synthesis Agent, Architect Agent, Documentation Agent, Integration Fixer, Fix Verifier, Verification Agent), prepend these instructions to its prompt:
+
+> **Context bootstrap** (do this before your main task):
+> 1. Read `~/.claude/CLAUDE.md` (global instructions) and `$GIT_ROOT/CLAUDE.md` (repo instructions) if they exist. Follow all instructions — repo instructions override global ones.
+> 2. Read codebase index files if present:
+>    - `.codesight/CODESIGHT.md` at `$GIT_ROOT`
+>    - `docs/agent_index.md` at `$GIT_ROOT`
+>    - If no agent index was found at the above path, glob for `**/agent_index.md` at `$GIT_ROOT` and read any match.
+
+Do **not** add this bootstrap to narrow utility agents (Setup Agent, Issue Creation Agent, Merge & Sync Agent, Smoke Test Runner, Full Test Runner, Poll Agent, Mermaid Agent).
+
 ### Phase 2a — Research Agent (`model: "opus"`)
 
 Before the planning team debates, one agent gathers the raw facts.
@@ -109,9 +122,11 @@ Before the planning team debates, one agent gathers the raw facts.
 Role: read-only codebase research. No file writes except the research document.
 
 1. Read the epic issue body and all comments in full.
-2. Read the codebase index files if present:
+2. Read project instructions and codebase index files:
+   - Read `~/.claude/CLAUDE.md` (global instructions) and `$GIT_ROOT/CLAUDE.md` (repo instructions) if they exist. Follow all instructions — repo instructions override global ones.
    - `.codesight/CODESIGHT.md` at `$GIT_ROOT`
    - `docs/agent_index.md` at `$GIT_ROOT`
+   - If no agent index was found at `docs/agent_index.md`, glob for `**/agent_index.md` at `$GIT_ROOT` and read any match.
 3. Search the codebase exhaustively for all areas mentioned in the epic — grep for symbols, read affected files, map dependencies between them.
 4. Produce `.claude-work/EPIC_<number>_RESEARCH.md`:
    ```markdown

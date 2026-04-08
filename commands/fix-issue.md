@@ -234,6 +234,21 @@ the plan being stable from Step 2 onward.
 
 ---
 
+## Subagent Context Bootstrap
+
+When spawning any subagent that reads or modifies source code (Planner, Architect, Coder, Tester, Integrator, Reviewer, Documentation Agent), prepend these instructions to its prompt:
+
+> **Context bootstrap** (do this before your main task):
+> 1. Read `~/.claude/CLAUDE.md` (global instructions) and `$GIT_ROOT/CLAUDE.md` (repo instructions) if they exist. Follow all instructions — repo instructions override global ones.
+> 2. Read codebase index files if present:
+>    - `.codesight/CODESIGHT.md` at `$GIT_ROOT`
+>    - `docs/agent_index.md` at `$GIT_ROOT`
+>    - If no agent index was found at the above path, glob for `**/agent_index.md` at `$GIT_ROOT` and read any match.
+
+Do **not** add this bootstrap to narrow utility agents (Mermaid Agent).
+
+---
+
 ## Step 1 — Assess Complexity
 
 Read the issue title, body, and comments in full. Then assess:
@@ -269,9 +284,11 @@ Regardless of tier, spawn a **Planner agent** first (`model: "opus"`).
 Role: read-only research. No file writes except the plan document.
 
 1. Read the issue (already fetched above — pass it in full).
-2. Before any codebase research, read the codebase index files if present:
+2. Read project instructions and codebase index files:
+   - Read `~/.claude/CLAUDE.md` (global instructions) and `$GIT_ROOT/CLAUDE.md` (repo instructions) if they exist. Follow all instructions — repo instructions override global ones.
    - If `.codesight/CODESIGHT.md` exists at `$GIT_ROOT`, read it in full. It provides a high-level map of the codebase architecture and module responsibilities — use it to orient all subsequent file searches.
    - If `docs/agent_index.md` exists at `$GIT_ROOT`, read it in full. Use it to identify existing capabilities relevant to the issue — if a match is found, the plan must use that capability rather than reimplementing it.
+   - If no agent index was found at `docs/agent_index.md`, glob for `**/agent_index.md` at `$GIT_ROOT` and read any match.
 3. Search the codebase for all affected files:
    - Grep for symbols, function names, patterns mentioned in the issue
    - Read the files most likely involved
