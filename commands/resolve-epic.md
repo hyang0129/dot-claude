@@ -44,47 +44,57 @@ gh issue view <number> --repo <REPO> --json number,title,body,labels,comments,as
 
 Verify the issue title or labels indicate it is an epic (title prefix `epic:`, label `epic`, or body contains "## Epic Summary" or similar). If not obviously an epic, ask the user to confirm.
 
-### Base branch detection
+### Setup Agent (`model: "sonnet"`)
 
-Determine the development base branch (same logic as `/fix-issue` auto-detection):
+Spawn a **Setup Agent** to detect the base branch, resolve the git root, and create the epic branch. The orchestrator does not run git commands directly.
 
-```bash
-git fetch origin
-git ls-remote --heads origin dev develop 2>/dev/null
-```
+#### Setup Agent instructions
 
-- If `dev` exists → `DEV_BASE=dev`
-- Else if `develop` exists → `DEV_BASE=develop`
-- Else → `DEV_BASE=main` (or `master`)
+Role: repository setup only. No source file changes, no implementation.
 
-### Git root and working directory
+1. Determine the development base branch (same logic as `/fix-issue` auto-detection):
+   ```bash
+   git fetch origin
+   git ls-remote --heads origin dev develop 2>/dev/null
+   ```
+   - If `dev` exists → `DEV_BASE=dev`
+   - Else if `develop` exists → `DEV_BASE=develop`
+   - Else → `DEV_BASE=main` (or `master`)
 
-Resolve `GIT_ROOT` using the same dev-container-safe logic as `/fix-issue`.
+2. Resolve `GIT_ROOT` using the same dev-container-safe logic as `/fix-issue`.
 
-Set up `.claude-work/`:
-```bash
-mkdir -p "$GIT_ROOT/.claude-work"
-grep -qxF '.claude-work/' "$GIT_ROOT/.git/info/exclude" \
-  || echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
-```
+3. Set up `.claude-work/`:
+   ```bash
+   mkdir -p "$GIT_ROOT/.claude-work"
+   grep -qxF '.claude-work/' "$GIT_ROOT/.git/info/exclude" \
+     || echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
+   ```
 
-Verify the working tree is clean:
-```bash
-git status --short
-```
-If uncommitted changes exist, stop and warn.
+4. Verify the working tree is clean:
+   ```bash
+   git status --short
+   ```
+   If uncommitted changes exist, report and stop.
 
-### Create epic branch
+5. Create the epic branch:
+   ```bash
+   EPIC_BRANCH="epic/<number>-<slug>"
+   git checkout "origin/$DEV_BASE"
+   git checkout -b "$EPIC_BRANCH"
+   git push -u origin "$EPIC_BRANCH"
+   ```
+   `<slug>` is a 2-4 word kebab-case summary derived from the epic title.
 
-```bash
-EPIC_BRANCH="epic/<number>-<slug>"
-git fetch origin
-git checkout "origin/$DEV_BASE"
-git checkout -b "$EPIC_BRANCH"
-git push -u origin "$EPIC_BRANCH"
-```
+6. Return the handoff block:
+   ```
+   HANDOFF
+   GIT_ROOT=<absolute path>
+   DEV_BASE=<branch name>
+   EPIC_BRANCH=<branch name>
+   END_HANDOFF
+   ```
 
-`<slug>` is a 2-4 word kebab-case summary derived from the epic title.
+The orchestrator reads the handoff and sets `GIT_ROOT`, `DEV_BASE`, and `EPIC_BRANCH` for all subsequent steps.
 
 ---
 
@@ -226,8 +236,15 @@ Same role and output format as the `/fix-issue` Step 2b Architect, but scoped to
 1. Read `.claude-work/EPIC_<number>_DECOMPOSITION.md` and the full epic issue.
 2. For each architecture question, research options by reading relevant code, docs, and existing patterns.
 3. Produce `.claude-work/EPIC_<number>_ADR.md` (same ADR format as `/fix-issue`).
+4. Post the ADR as checkboxes on the epic issue (same format as `/fix-issue` Step 2b) using `gh issue comment`.
+5. Return handoff:
+   ```
+   HANDOFF
+   ADR_POSTED=true
+   END_HANDOFF
+   ```
 
-**STOP after the Architect completes.** Post the ADR as checkboxes on the epic issue (same format as `/fix-issue` Step 2b) and wait for APPROVED/REJECT.
+**STOP after the Architect completes.** The orchestrator waits for APPROVED/REJECT on the epic issue. Poll for comments containing "APPROVED" or "REJECT" using `gh` via a **Poll Agent** (`model: "haiku"`) that checks every 60 seconds and returns the result.
 
 If the decomposition has **no** architecture questions, skip this step entirely and proceed to Step 4.
 
@@ -235,58 +252,70 @@ If the decomposition has **no** architecture questions, skip this step entirely 
 
 ## Step 4 — Create Sub-Issues on GitHub
 
-For each sub-issue in the decomposition, create a GitHub issue:
+Spawn an **Issue Creation Agent** (`model: "sonnet"`) to create the sub-issues and post the tracking comment.
 
-```bash
-gh issue create --repo <REPO> \
-  --title "<sub-issue title>" \
-  --body "$(cat <<'EOF'
-Part of epic #<number>
+### Issue Creation Agent instructions
 
-## Context
-This is sub-issue <N> of <total> for the rendering pipeline epic.
-Parent epic: #<number>
-Epic branch: `<EPIC_BRANCH>`
-<If ADR exists: Architecture decisions: see epic #<number> ADR comment>
+Role: create GitHub issues and post comments. No source file changes, no git operations.
 
-## Scope
-<scope bullets from decomposition>
+1. Read `.claude-work/EPIC_<number>_DECOMPOSITION.md` for the sub-issue list.
+2. Read `.claude-work/EPIC_<number>_ADR.md` if it exists.
+3. For each sub-issue in the decomposition, create a GitHub issue:
+   ```bash
+   gh issue create --repo <REPO> \
+     --title "<sub-issue title>" \
+     --body "$(cat <<'EOF'
+   Part of epic #<number>
 
-## Files likely affected
-<file list from decomposition>
+   ## Context
+   This is sub-issue <N> of <total> for the rendering pipeline epic.
+   Parent epic: #<number>
+   Epic branch: `<EPIC_BRANCH>`
+   <If ADR exists: Architecture decisions: see epic #<number> ADR comment>
 
-## Acceptance criteria
-<criteria from decomposition>
+   ## Scope
+   <scope bullets from decomposition>
 
-## Constraints
-- Branch off and PR into `<EPIC_BRANCH>` (not dev)
-- Follow architecture decisions from epic ADR
-- Do not modify files outside the scope listed above
-EOF
-)"
-```
+   ## Files likely affected
+   <file list from decomposition>
 
-Collect the created issue numbers into an ordered list: `SUB_ISSUES=(<num1> <num2> <num3> ...)`.
+   ## Acceptance criteria
+   <criteria from decomposition>
 
-Post a tracking comment on the epic:
+   ## Constraints
+   - Branch off and PR into `<EPIC_BRANCH>` (not dev)
+   - Follow architecture decisions from epic ADR
+   - Do not modify files outside the scope listed above
+   EOF
+   )"
+   ```
+4. Collect the created issue numbers into an ordered list.
+5. Post a tracking comment on the epic:
+   ```bash
+   gh issue comment <number> --repo <REPO> --body "$(cat <<'EOF'
+   ## Sub-Issues Created
 
-```bash
-gh issue comment <number> --repo <REPO> --body "$(cat <<'EOF'
-## Sub-Issues Created
+   Epic branch: `<EPIC_BRANCH>`
 
-Epic branch: `<EPIC_BRANCH>`
+   | # | Issue | Title | Status |
+   |---|-------|-------|--------|
+   | 1 | #<num1> | <title> | pending |
+   | 2 | #<num2> | <title> | pending |
+   | 3 | #<num3> | <title> | pending |
+   | ... | | | |
 
-| # | Issue | Title | Status |
-|---|-------|-------|--------|
-| 1 | #<num1> | <title> | pending |
-| 2 | #<num2> | <title> | pending |
-| 3 | #<num3> | <title> | pending |
-| ... | | | |
+   Implementation will proceed autonomously. Updates will be posted as each sub-issue completes.
+   EOF
+   )"
+   ```
+6. Return the handoff block:
+   ```
+   HANDOFF
+   SUB_ISSUES=<num1>,<num2>,<num3>,...
+   END_HANDOFF
+   ```
 
-Implementation will proceed autonomously. Updates will be posted as each sub-issue completes.
-EOF
-)"
-```
+The orchestrator reads the `SUB_ISSUES` list for Step 5.
 
 ---
 
@@ -321,22 +350,37 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
 ### On success
 
 1. Record the sub-issue PR URL and number.
-2. Merge the sub-issue PR into the epic branch (squash merge):
-   ```bash
-   gh pr merge <PR_NUMBER> --repo <REPO> --squash --delete-branch
-   ```
-   If merge fails (e.g. checks not passing), wait up to 5 minutes for CI, then retry once. If still failing, treat as a blocker.
-3. Update the epic tracking comment — change this sub-issue's status to `done ✓ (#<PR_NUMBER>)`.
-4. Post a progress comment on the epic:
-   ```bash
-   gh issue comment <epic_number> --repo <REPO> --body "Sub-issue <N>/<total> complete: #<sub_issue_number> → PR #<PR_NUMBER> merged into \`<EPIC_BRANCH>\`."
-   ```
-5. Pull the latest epic branch before running smoke tests:
-   ```bash
-   git fetch origin
-   git checkout "$EPIC_BRANCH"
-   git reset --hard "origin/$EPIC_BRANCH"
-   ```
+2. Spawn a **Merge & Sync Agent** (`model: "sonnet"`) to merge the sub-issue and update tracking.
+
+   #### Merge & Sync Agent instructions
+
+   Role: merge PR, update tracking, sync local branch. No source file changes.
+
+   1. Merge the sub-issue PR into the epic branch (squash merge):
+      ```bash
+      gh pr merge <PR_NUMBER> --repo <REPO> --squash --delete-branch
+      ```
+      If merge fails (e.g. checks not passing), wait up to 5 minutes for CI, then retry once. If still failing, return `SUCCESS=false`.
+   2. Update the epic tracking comment — change this sub-issue's status to `done ✓ (#<PR_NUMBER>)`.
+   3. Post a progress comment on the epic:
+      ```bash
+      gh issue comment <epic_number> --repo <REPO> --body "Sub-issue <N>/<total> complete: #<sub_issue_number> → PR #<PR_NUMBER> merged into \`<EPIC_BRANCH>\`."
+      ```
+   4. Pull the latest epic branch:
+      ```bash
+      git fetch origin
+      git checkout "$EPIC_BRANCH"
+      git reset --hard "origin/$EPIC_BRANCH"
+      ```
+   5. Return handoff:
+      ```
+      HANDOFF
+      SUCCESS=<true|false>
+      FAILURE_REASON=<empty if true, otherwise description>
+      END_HANDOFF
+      ```
+
+   If the Merge & Sync Agent returns `SUCCESS=false`, treat as a blocker.
 6. **Integration smoke test gate.** Spawn a **Smoke Test Runner** agent (`model: "sonnet"`) to execute and evaluate the tests.
 
    #### Smoke Test Runner instructions
@@ -385,12 +429,18 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
       <raw output for any failed check — needed by Diagnostician if activated>
       ```
 
-   **If overall PASS**: post a brief confirmation on the epic issue and proceed to the next sub-issue.
-   ```bash
-   gh issue comment <epic_number> --repo <REPO> --body "Integration smoke tests passed after sub-issue <N>/<total> (#<sub_issue_number>). Proceeding to sub-issue <N+1>."
-   ```
+   5. If overall PASS, post a confirmation comment:
+      ```bash
+      gh issue comment <epic_number> --repo <REPO> --body "Integration smoke tests passed after sub-issue <N>/<total> (#<sub_issue_number>). Proceeding to sub-issue <N+1>."
+      ```
+   6. Return handoff:
+      ```
+      HANDOFF
+      OVERALL=<PASS|FAIL>
+      END_HANDOFF
+      ```
 
-   **If overall FAIL**: this is an integration regression. Do **not** proceed to the next sub-issue. Activate the **Integration Fix Team**.
+   The orchestrator reads the handoff. **If PASS**: proceed to the next sub-issue. **If FAIL**: activate the **Integration Fix Team**.
 
    ### Integration Fix Team
 
@@ -470,9 +520,9 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
    4. Output: `VERIFIED` or `CONCERNS: <list>`.
       - If `CONCERNS` are raised, the Fixer applies corrections (still within the same cycle).
 
-   #### After the team completes
+   #### After the fix team completes
 
-   Commit and push the fix:
+   The **Integration Fixer** (Agent 2) is responsible for committing and pushing its own fix as its final action:
    ```bash
    git add <only fixed files>
    git commit -m "fix(epic-<number>): integration fix after sub-issue <N> (#<sub_issue_number>)
@@ -483,9 +533,11 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
    git push origin "$EPIC_BRANCH"
    ```
 
-   Re-run all smoke tests. If they pass → post confirmation, proceed to next sub-issue.
+   Then re-spawn the **Smoke Test Runner** agent to re-run all smoke tests.
 
-   If still failing and `FIX_CYCLE < MAX_FIX_CYCLES` → increment `FIX_CYCLE`, re-run the Integration Fix Team with the new failure output.
+   If smoke tests pass → post confirmation, proceed to next sub-issue.
+
+   If still failing and `FIX_CYCLE < MAX_FIX_CYCLES` → increment `FIX_CYCLE`, re-run the Integration Fix Team with the new Smoke Test Runner report.
 
    If still failing after `MAX_FIX_CYCLES` → **BLOCKER**:
    ```
@@ -540,29 +592,56 @@ Action required: resolve the blocker on #<sub_issue_number>, then re-run:
 
 ## Step 6 — Epic Validation
 
-After all sub-issues are resolved and merged into the epic branch:
+After all sub-issues are resolved and merged into the epic branch, run two validation agents.
 
-### Run full validation on the epic branch
+### 6a — Full Test Runner (`model: "sonnet"`)
 
-```bash
-git fetch origin
-git checkout "$EPIC_BRANCH"
-git reset --hard "origin/$EPIC_BRANCH"
-```
+Spawn a **Full Test Runner** agent to execute the complete validation suite on the epic branch.
 
-Run the project's full test suite and binary checks:
-```bash
-<compile command if applicable>
-<typecheck command if applicable>
-<lint command if applicable>
-<test command — full suite, not just unit>
-```
+#### Full Test Runner instructions
 
-If any check fails, identify which sub-issue likely introduced the regression and report as a blocker. Do not attempt automated fixes at the epic level — the fix should go through a targeted sub-issue.
+Role: execute tests and report results. No source file changes.
 
-### Verify epic-level acceptance criteria
+1. Sync to the latest epic branch:
+   ```bash
+   git fetch origin
+   git checkout "$EPIC_BRANCH"
+   git reset --hard "origin/$EPIC_BRANCH"
+   ```
+2. Run the project's full test suite and binary checks:
+   ```bash
+   <compile command if applicable>
+   <typecheck command if applicable>
+   <lint command if applicable>
+   <test command — full suite, not just unit>
+   ```
+3. Produce `.claude-work/EPIC_<number>_FULL_TEST.md`:
+   ```markdown
+   ## Full Validation Results — epic branch
 
-Spawn a **Verification Agent** (`model: "opus"`):
+   ### Overall: PASS | FAIL
+
+   ### Results
+   | Check | Result | Notes |
+   |-------|--------|-------|
+   | compile | pass/fail | ... |
+   | typecheck | pass/fail | ... |
+   | lint | pass/fail | ... |
+   | full test suite | pass/fail | <failing test names if any> |
+
+   ### Full output (failures only)
+   <raw output for any failed check>
+   ```
+
+The orchestrator reads the report. If overall FAIL, report as a blocker — do not attempt automated fixes at the epic level. Include which tests failed so the user can diagnose.
+
+### 6b — Verification Agent (`model: "opus"`)
+
+Spawn only if the Full Test Runner reports PASS.
+
+#### Verification Agent instructions
+
+Role: read-only acceptance criteria verification. No file changes.
 
 1. Read the original epic issue acceptance criteria.
 2. Read the full diff of the epic branch against `<DEV_BASE>`:
@@ -572,7 +651,7 @@ Spawn a **Verification Agent** (`model: "opus"`):
 3. For each acceptance criterion, verify it is met by the implementation. Produce a checklist with evidence (file paths, function names, test names).
 4. Output `.claude-work/EPIC_<number>_VERIFICATION.md`.
 
-If any acceptance criteria are not met, report which ones and stop as a blocker.
+The orchestrator reads the verification report. If any acceptance criteria are not met, report which ones and stop as a blocker.
 
 ---
 
@@ -715,7 +794,7 @@ See PR for full checklist — human review required before merge into <DEV_BASE>
 
 ## Constraints
 
-- This orchestrator never touches source files directly — all implementation is delegated to `/resolve-issue`.
+- **The orchestrator only delegates and reads.** It never runs git commands, gh commands, bash commands, or modifies any files. All actions (branch creation, issue creation, merging, testing, committing, pushing, posting comments) are performed by spawned subagents. The orchestrator's job is to: (1) spawn agents with the right instructions and context, (2) read their handoff blocks and artifact files, (3) decide what to do next based on those results.
 - One epic branch per epic. One epic PR into `<DEV_BASE>`.
 - Sub-issue PRs target the epic branch, not `<DEV_BASE>`.
 - Sub-issue PRs are squash-merged into the epic branch automatically after `/resolve-issue` succeeds.
