@@ -1,4 +1,4 @@
-# Fix
+# Resolve Issue
 
 ## Purpose
 
@@ -14,7 +14,7 @@ handoff adherence when all three phases run in a single growing conversation.
 
 ## Args
 
-Same as `/fix-issue`: `/fix <issue> [tier] [--worktree]`
+Same as `/fix-issue`: `/resolve-issue <issue> [tier] [--worktree] [--base <branch>]`
 
 All arguments are forwarded verbatim to the fix-issue subagent.
 
@@ -103,7 +103,7 @@ Wait for the subagent to complete. Relay its terminal state to the user.
 Present to the user:
 
 ```
-## fix complete: #<number> <title>
+## resolve-issue complete: #<number> <title>
 
 Phase 1 — fix-issue:  ✓ PR #<PR_NUMBER> created (<PR_URL>)
 Phase 2 — review-fix: ✓ <N> findings addressed, <N> cycles

@@ -36,6 +36,13 @@ if exist "%TARGET%\commands" (
     )
 )
 if not exist "%TARGET%\commands" mkdir "%TARGET%\commands"
+REM Prune stale files no longer in the repo
+for %%f in ("%TARGET%\commands\*.md") do (
+    if not exist "%SCRIPT_DIR%commands\%%~nxf" (
+        del /f /q "%%f" 2>nul
+        echo   pruned commands\%%~nxf
+    )
+)
 for %%f in ("%SCRIPT_DIR%commands\*.md") do (
     if exist "%TARGET%\commands\%%~nxf" del /f /q "%TARGET%\commands\%%~nxf" 2>nul
     copy /y "%%f" "%TARGET%\commands\%%~nxf" >nul
@@ -52,6 +59,13 @@ if exist "%TARGET%\guides" (
     )
 )
 if not exist "%TARGET%\guides" mkdir "%TARGET%\guides"
+REM Prune stale files no longer in the repo
+for %%f in ("%TARGET%\guides\*.md") do (
+    if not exist "%SCRIPT_DIR%guides\%%~nxf" (
+        del /f /q "%%f" 2>nul
+        echo   pruned guides\%%~nxf
+    )
+)
 for %%f in ("%SCRIPT_DIR%guides\*.md") do (
     if exist "%TARGET%\guides\%%~nxf" del /f /q "%TARGET%\guides\%%~nxf" 2>nul
     copy /y "%%f" "%TARGET%\guides\%%~nxf" >nul

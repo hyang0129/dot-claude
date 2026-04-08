@@ -2,12 +2,13 @@
 
 ## Setup
 
-Parse arguments — format is: `/fix-issue <issue> [tier] [--worktree]`
+Parse arguments — format is: `/fix-issue <issue> [tier] [--worktree] [--base <branch>]`
 - `issue`: required. GitHub issue number (e.g. `42`) or full URL.
 - `tier`: optional override: `1`, `2`, or `3`. If omitted, tier is auto-detected.
 - `--worktree`: optional flag. If present, create a `git worktree` for the feature branch instead of checking it out in the main repo. The worktree is created as a sibling directory (`../repo-name-issue-<number>/`). Useful when multiple issues are being worked in parallel or when the main repo must stay on its current branch.
+- `--base <branch>`: optional. Override the base branch instead of auto-detecting `dev`/`develop`/`main`. Used by `/resolve-epic` to target an epic branch. When set, the PR also targets this branch.
 
-Strip `--worktree` from the argument list before parsing `issue` and `tier`. Set `WORKTREE_MODE=true` if the flag was present, otherwise `WORKTREE_MODE=false`.
+Strip `--worktree` and `--base <branch>` from the argument list before parsing `issue` and `tier`. Set `WORKTREE_MODE=true` if `--worktree` was present, otherwise `WORKTREE_MODE=false`. Set `BASE_OVERRIDE` to the branch name if `--base` was present, otherwise leave unset.
 
 Examples:
 - `/fix-issue 42` → fetch issue #42, auto-detect tier, normal checkout
@@ -15,6 +16,7 @@ Examples:
 - `/fix-issue 42 --worktree` → fetch issue #42, auto-detect tier, use a git worktree
 - `/fix-issue 42 2 --worktree` → force Tier 2, use a git worktree
 - `/fix-issue https://github.com/org/repo/issues/42` → full URL form
+- `/fix-issue 42 --base epic/601-rendering-pipeline` → branch off and PR into the epic branch
 
 Read the agent team guide before doing anything else:
 ```
@@ -57,7 +59,16 @@ Once confirmed, set `REPO=<owner/repo>` for all subsequent `gh` calls.
 
 ### Base branch detection
 
-Determine the correct base branch. **Always prefer `dev` (or `develop`) over `main` for development work** — even if `main` is the GitHub default branch. `dev` is where feature branches are merged; `main` is for releases only.
+If `BASE_OVERRIDE` is set (from `--base`), use it directly:
+
+```bash
+git fetch origin
+git rev-parse --verify origin/$BASE_OVERRIDE
+```
+
+If the branch does not exist on the remote, stop and report: "Base branch `<BASE_OVERRIDE>` does not exist on origin." Set `BASE=$BASE_OVERRIDE` and skip auto-detection.
+
+If `BASE_OVERRIDE` is **not** set, auto-detect. **Always prefer `dev` (or `develop`) over `main` for development work** — even if `main` is the GitHub default branch. `dev` is where feature branches are merged; `main` is for releases only.
 
 ```bash
 git fetch origin
