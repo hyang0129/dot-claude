@@ -337,28 +337,60 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
    git checkout "$EPIC_BRANCH"
    git reset --hard "origin/$EPIC_BRANCH"
    ```
-6. **Integration smoke test gate.** Run the smoke tests specified for this sub-issue in the decomposition plan, plus cumulative checks:
+6. **Integration smoke test gate.** Spawn a **Smoke Test Runner** agent (`model: "sonnet"`) to execute and evaluate the tests.
 
-   ```bash
-   # a) Sub-issue-specific smoke tests from the decomposition plan
-   <smoke test commands from EPIC_<number>_DECOMPOSITION.md for this sub-issue>
+   #### Smoke Test Runner instructions
 
-   # b) Cumulative: full compile/typecheck/lint (fast checks only)
-   <compile command if applicable>
-   <typecheck command if applicable>
-   <lint command if applicable>
+   Role: execute smoke tests, evaluate results, report pass/fail. No source file changes.
 
-   # c) Cumulative: run tests for all areas touched by the epic so far
-   #    (not the full suite — just modules affected by completed sub-issues)
-   <targeted test command covering files changed on the epic branch>
-   ```
+   1. Read `.claude-work/EPIC_<number>_DECOMPOSITION.md` to find the smoke test commands for this sub-issue.
+   2. Read the list of all files changed on the epic branch so far:
+      ```bash
+      git diff "origin/$DEV_BASE"..."$EPIC_BRANCH" --name-only
+      ```
+   3. Execute tests in order, capturing all output:
+      ```bash
+      # a) Sub-issue-specific smoke tests from the decomposition plan
+      <smoke test commands for this sub-issue>
 
-   **If smoke tests pass**: post a brief confirmation on the epic issue and proceed to the next sub-issue.
+      # b) Cumulative: full compile/typecheck/lint (fast checks only)
+      <compile command if applicable>
+      <typecheck command if applicable>
+      <lint command if applicable>
+
+      # c) Cumulative: run tests for all areas touched by the epic so far
+      #    (not the full suite — just modules affected by completed sub-issues)
+      <targeted test command covering files changed on the epic branch>
+      ```
+   4. Produce `.claude-work/EPIC_<number>_SMOKE_<N>.md`:
+      ```markdown
+      ## Smoke Test Results — after sub-issue <N> (#<sub_issue_number>)
+
+      ### Overall: PASS | FAIL
+
+      ### Sub-issue-specific tests
+      | Test | Result | Notes |
+      |------|--------|-------|
+      | <command> | pass/fail | <output summary if failed> |
+
+      ### Cumulative checks
+      | Check | Result | Notes |
+      |-------|--------|-------|
+      | compile | pass/fail | ... |
+      | typecheck | pass/fail | ... |
+      | lint | pass/fail | ... |
+      | targeted tests | pass/fail | <failing test names if any> |
+
+      ### Full output (failures only)
+      <raw output for any failed check — needed by Diagnostician if activated>
+      ```
+
+   **If overall PASS**: post a brief confirmation on the epic issue and proceed to the next sub-issue.
    ```bash
    gh issue comment <epic_number> --repo <REPO> --body "Integration smoke tests passed after sub-issue <N>/<total> (#<sub_issue_number>). Proceeding to sub-issue <N+1>."
    ```
 
-   **If smoke tests fail**: this is an integration regression. Do **not** proceed to the next sub-issue. Activate the **Integration Fix Team**.
+   **If overall FAIL**: this is an integration regression. Do **not** proceed to the next sub-issue. Activate the **Integration Fix Team**.
 
    ### Integration Fix Team
 
@@ -370,7 +402,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
 
    Role: read-only root-cause analysis. No file changes.
 
-   1. Read the failing test output in full.
+   1. Read `.claude-work/EPIC_<number>_SMOKE_<N>.md` (the Smoke Test Runner's report) in full.
    2. Read the diff of the most recently merged sub-issue:
       ```bash
       git log --oneline -5  # identify the squash-merge commit
