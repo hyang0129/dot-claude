@@ -188,6 +188,7 @@ If none: "No cross-cutting architecture questions — proceed directly to implem
 **Acceptance criteria**:
 - [ ] <criterion>
 **Testable state after merge**: [what should work / pass after this sub-issue lands]
+**Smoke tests**: [specific commands or checks to run after merging this sub-issue into the epic branch — e.g. `pytest tests/test_thumbnail.py`, `python -c "from module import X"`, `ruff check src/`]
 
 ### Sub-Issue 2: <title>
 **Depends on**: Sub-Issue 1
@@ -330,13 +331,151 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
    ```bash
    gh issue comment <epic_number> --repo <REPO> --body "Sub-issue <N>/<total> complete: #<sub_issue_number> → PR #<PR_NUMBER> merged into \`<EPIC_BRANCH>\`."
    ```
-5. Pull the latest epic branch before starting the next sub-issue:
+5. Pull the latest epic branch before running smoke tests:
    ```bash
    git fetch origin
    git checkout "$EPIC_BRANCH"
    git reset --hard "origin/$EPIC_BRANCH"
    ```
-6. **Proceed immediately to the next sub-issue.** No human checkpoint.
+6. **Integration smoke test gate.** Run the smoke tests specified for this sub-issue in the decomposition plan, plus cumulative checks:
+
+   ```bash
+   # a) Sub-issue-specific smoke tests from the decomposition plan
+   <smoke test commands from EPIC_<number>_DECOMPOSITION.md for this sub-issue>
+
+   # b) Cumulative: full compile/typecheck/lint (fast checks only)
+   <compile command if applicable>
+   <typecheck command if applicable>
+   <lint command if applicable>
+
+   # c) Cumulative: run tests for all areas touched by the epic so far
+   #    (not the full suite — just modules affected by completed sub-issues)
+   <targeted test command covering files changed on the epic branch>
+   ```
+
+   **If smoke tests pass**: post a brief confirmation on the epic issue and proceed to the next sub-issue.
+   ```bash
+   gh issue comment <epic_number> --repo <REPO> --body "Integration smoke tests passed after sub-issue <N>/<total> (#<sub_issue_number>). Proceeding to sub-issue <N+1>."
+   ```
+
+   **If smoke tests fail**: this is an integration regression. Do **not** proceed to the next sub-issue. Activate the **Integration Fix Team**.
+
+   ### Integration Fix Team
+
+   This team diagnoses and resolves integration failures on the epic branch after a sub-issue merge. Max 2 fix cycles before escalating to blocker.
+
+   **Set `FIX_CYCLE = 1`, `MAX_FIX_CYCLES = 2`.**
+
+   #### Agent 1 — Diagnostician (`model: "opus"`)
+
+   Role: read-only root-cause analysis. No file changes.
+
+   1. Read the failing test output in full.
+   2. Read the diff of the most recently merged sub-issue:
+      ```bash
+      git log --oneline -5  # identify the squash-merge commit
+      git show <merge-commit> --stat --patch
+      ```
+   3. Read the files that failed and their callers/dependencies.
+   4. Read the previous sub-issues' changes if the failure might be a cross-sub-issue interaction:
+      ```bash
+      git diff "origin/$DEV_BASE"..."$EPIC_BRANCH"
+      ```
+   5. Produce `.claude-work/EPIC_<number>_SMOKE_DIAG_<N>.md`:
+      ```markdown
+      ## Integration Failure Diagnosis — after sub-issue <N>
+
+      ### Failing tests
+      - <test name>: <one-line failure description>
+
+      ### Root cause
+      [Which sub-issue introduced the break, what the interaction is,
+      and why it wasn't caught by the sub-issue's own tests]
+
+      ### Affected files
+      | File | Problem | Fix approach |
+      |------|---------|-------------|
+      | ... | ... | ... |
+
+      ### Recommended fix scope
+      [Minimal set of changes needed — should not exceed ~50 lines]
+
+      ### Risk assessment
+      [Could this fix break something else? What to re-test after.]
+      ```
+
+   #### Agent 2 — Integration Fixer (`model: "sonnet"`)
+
+   Role: apply the targeted fix. Scope-limited.
+
+   1. Read `.claude-work/EPIC_<number>_SMOKE_DIAG_<N>.md`.
+   2. Apply the recommended fix. **Scope**: only files listed in the diagnosis.
+   3. Do not refactor, do not fix unrelated issues, do not modify test expectations unless the test itself is wrong.
+   4. Produce `.claude-work/EPIC_<number>_SMOKE_FIX_<N>.md`:
+      ```markdown
+      ## Integration Fix — cycle <FIX_CYCLE>
+
+      ### Changes made
+      | File | Change |
+      |------|--------|
+      | ... | ... |
+
+      ### Rationale
+      [Why this fix addresses the root cause without side effects]
+      ```
+
+   #### Agent 3 — Fix Verifier (`model: "opus"`)
+
+   Role: read-only verification. No file changes.
+
+   1. Read the fix diff and the original diagnosis.
+   2. Read callers and dependents of changed functions.
+   3. Verify:
+      - The fix addresses the diagnosed root cause
+      - The fix does not contradict any ADR decisions
+      - The fix does not revert or weaken any sub-issue's intent
+      - No new issues are introduced in the surrounding code
+   4. Output: `VERIFIED` or `CONCERNS: <list>`.
+      - If `CONCERNS` are raised, the Fixer applies corrections (still within the same cycle).
+
+   #### After the team completes
+
+   Commit and push the fix:
+   ```bash
+   git add <only fixed files>
+   git commit -m "fix(epic-<number>): integration fix after sub-issue <N> (#<sub_issue_number>)
+
+   Root cause: <one-line from diagnosis>
+
+   Co-Authored-By: Claude Code <noreply@anthropic.com>"
+   git push origin "$EPIC_BRANCH"
+   ```
+
+   Re-run all smoke tests. If they pass → post confirmation, proceed to next sub-issue.
+
+   If still failing and `FIX_CYCLE < MAX_FIX_CYCLES` → increment `FIX_CYCLE`, re-run the Integration Fix Team with the new failure output.
+
+   If still failing after `MAX_FIX_CYCLES` → **BLOCKER**:
+   ```
+   ## resolve-epic BLOCKED — integration failure after sub-issue <N>/<total>
+
+   Epic: #<number> — <title>
+   Epic branch: <EPIC_BRANCH>
+   Last merged: #<sub_issue_number> — <sub_issue_title>
+
+   ### Failing smoke tests
+   <test output>
+
+   ### Diagnosis
+   <summary from .claude-work/EPIC_<number>_SMOKE_DIAG_<N>.md>
+
+   ### Fix attempts (<MAX_FIX_CYCLES> cycles)
+   <summary of what each cycle tried and why it didn't fully resolve>
+
+   Action required: fix the integration issue on `<EPIC_BRANCH>`, then re-run:
+   /resolve-epic <epic_number>
+   ```
+7. **Proceed to the next sub-issue.** No human checkpoint.
 
 ### On failure
 
