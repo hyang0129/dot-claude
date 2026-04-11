@@ -64,10 +64,13 @@ Role: repository setup only. No source file changes, no implementation.
 2. Resolve `GIT_ROOT` using the same dev-container-safe logic as `/fix-issue`.
 
 3. Set up `.claude-work/`:
+   First, check if the scratch directory already exists:
    ```bash
-   mkdir -p "$GIT_ROOT/.claude-work"
-   grep -qxF '.claude-work/' "$GIT_ROOT/.git/info/exclude" \
-     || echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
+   test -d "$GIT_ROOT/.claude-work" && echo "EXISTS" || echo "MISSING"
+   ```
+   If `EXISTS`, skip ahead. If `MISSING`, create it:
+   ```bash
+   mkdir -p "$GIT_ROOT/.claude-work" && echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
    ```
 
 4. Verify the working tree is clean:

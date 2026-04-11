@@ -29,10 +29,17 @@ If `GIT_ROOT` is still empty, stop:
 
 Set up scratch directory:
 
+First, check if the scratch directory already exists:
+```bash
+test -d "$GIT_ROOT/.claude-work" && echo "EXISTS" || echo "MISSING"
+```
+If `EXISTS`, skip to creating the subdirectory. If `MISSING`, create it:
+```bash
+mkdir -p "$GIT_ROOT/.claude-work" && echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
+```
+Then create the subdirectory:
 ```bash
 mkdir -p "$GIT_ROOT/.claude-work/agent-index"
-grep -qxF '.claude-work/' "$GIT_ROOT/.git/info/exclude" \
-  || echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
 WORK="$GIT_ROOT/.claude-work/agent-index"
 ```
 

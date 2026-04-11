@@ -130,10 +130,13 @@ or use `git -C "$GIT_ROOT" <command>`.
 
 Set up the `.claude-work/` scratch directory for all planning and review artifacts:
 
+First, check if the scratch directory already exists:
 ```bash
-mkdir -p "$GIT_ROOT/.claude-work"
-grep -qxF '.claude-work/' "$GIT_ROOT/.git/info/exclude" \
-  || echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
+test -d "$GIT_ROOT/.claude-work" && echo "EXISTS" || echo "MISSING"
+```
+If `EXISTS`, skip ahead. If `MISSING`, create it:
+```bash
+mkdir -p "$GIT_ROOT/.claude-work" && echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
 ```
 
 All artifact files produced during this session are written to `$GIT_ROOT/.claude-work/`.
