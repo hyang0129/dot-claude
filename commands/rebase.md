@@ -36,16 +36,17 @@ If `GIT_ROOT` is still empty, stop and tell the user:
 **All `git` commands in this spec must run from `GIT_ROOT`** — either `cd "$GIT_ROOT"` first,
 or use `git -C "$GIT_ROOT" <command>`.
 
-Set up the `.claude-work/` scratch directory for all rebase artifacts:
-
-First, check if the scratch directory already exists:
+Verify the `.claude-work/` scratch directory exists:
 ```bash
 test -d "$GIT_ROOT/.claude-work" && echo "EXISTS" || echo "MISSING"
 ```
-If `EXISTS`, skip ahead. If `MISSING`, create it:
-```bash
-mkdir -p "$GIT_ROOT/.claude-work" && echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
+If `MISSING`, stop and tell the user:
 ```
+.claude-work/ not found in this repo. Please run:
+  mkdir -p <GIT_ROOT>/.claude-work && echo '.claude-work/' >> <GIT_ROOT>/.git/info/exclude
+Then re-run this command.
+```
+Do not proceed until the directory exists.
 
 All artifact files produced during this session are written to `$GIT_ROOT/.claude-work/`.
 They are gitignored via `.git/info/exclude` and are never committed or pushed.

@@ -87,16 +87,18 @@ fi
 If `GIT_ROOT` is empty, the Refiner agent will work without codebase context — note this in the
 output spec. Do not stop. Skip the scratch directory setup below.
 
-If `GIT_ROOT` is set, the **orchestrator** (you, not the subagent) must set up the scratch
-directory now, before spawning anything:
-First, check if the scratch directory already exists:
+If `GIT_ROOT` is set, the **orchestrator** (you, not the subagent) must verify the scratch
+directory before spawning anything:
 ```bash
 test -d "$GIT_ROOT/.claude-work" && echo "EXISTS" || echo "MISSING"
 ```
-If `EXISTS`, skip ahead. If `MISSING`, create it:
-```bash
-mkdir -p "$GIT_ROOT/.claude-work" && echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
+If `MISSING`, stop and tell the user:
 ```
+.claude-work/ not found in this repo. Please run:
+  mkdir -p <GIT_ROOT>/.claude-work && echo '.claude-work/' >> <GIT_ROOT>/.git/info/exclude
+Then re-run this command.
+```
+Do not proceed until the directory exists.
 
 When `GIT_ROOT` is empty, the Refiner agent writes its output to a temp path instead:
 `/tmp/REFINED_<slug>.md`. Report this path to the user in the final summary.

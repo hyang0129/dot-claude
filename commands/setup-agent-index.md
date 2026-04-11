@@ -27,17 +27,19 @@ fi
 If `GIT_ROOT` is still empty, stop:
 > "Could not find a git repository. Run this command from inside a repo."
 
-Set up scratch directory:
-
-First, check if the scratch directory already exists:
+Verify the `.claude-work/` scratch directory exists:
 ```bash
 test -d "$GIT_ROOT/.claude-work" && echo "EXISTS" || echo "MISSING"
 ```
-If `EXISTS`, skip to creating the subdirectory. If `MISSING`, create it:
-```bash
-mkdir -p "$GIT_ROOT/.claude-work" && echo '.claude-work/' >> "$GIT_ROOT/.git/info/exclude"
+If `MISSING`, stop and tell the user:
 ```
-Then create the subdirectory:
+.claude-work/ not found in this repo. Please run:
+  mkdir -p <GIT_ROOT>/.claude-work && echo '.claude-work/' >> <GIT_ROOT>/.git/info/exclude
+Then re-run this command.
+```
+Do not proceed until the directory exists.
+
+Create the agent-index subdirectory:
 ```bash
 mkdir -p "$GIT_ROOT/.claude-work/agent-index"
 WORK="$GIT_ROOT/.claude-work/agent-index"
