@@ -302,16 +302,20 @@ Do not post to GitHub. The spec exists only locally.
 
 ## Step 4 — Keep the Issue in Sync
 
+**The GitHub issue is the master version of the spec.** The local `.claude-work/REFINED_<slug>.md`
+is a working copy only. The issue survives context resets, session outages, and new conversation
+windows — the local file does not. Treat every spec update as incomplete until the GitHub issue
+reflects it.
+
 After presenting the spec, the user may give feedback, answer clarifying questions, or request
-changes. **Any user answer that materially affects the spec must be reflected on the GitHub
-issue** (whether the issue was newly created or already existed):
+changes. **Any user answer that materially affects the spec must be pushed to the GitHub issue
+immediately** — before continuing the conversation or asking further questions:
 
 1. Update the local `.claude-work/REFINED_<slug>.md` with the change.
-2. Edit the GitHub issue body (if the spec is the body) or post a follow-up comment with the
-   updated section:
+2. Push the update to GitHub right away:
 
 ```bash
-# If the spec is the issue body (free-form → created issue):
+# If the spec is the issue body (free-form → created issue, or --post on existing issue):
 gh issue edit <number> --repo <REPO> --body "$(cat .claude-work/REFINED_<slug>.md)"
 
 # If the spec was posted as a comment (--post mode):
@@ -323,8 +327,8 @@ EOF
 )"
 ```
 
-This ensures the GitHub issue is always the source of truth — implementation agents that read
-the issue later will see the final agreed-upon spec, not the initial draft.
+Do not batch multiple user answers before pushing — push after each change. If the session ends
+before the issue is updated, the change is lost.
 
 ---
 
