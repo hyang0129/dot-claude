@@ -55,5 +55,19 @@
       "C:\\Users\\HongM\\.claude"
     ]
   },
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"$HOME/.claude/hooks/session-start-pid-registry.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
   "model": "claude-sonnet-4-6"
 }
