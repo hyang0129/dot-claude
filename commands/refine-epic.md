@@ -394,18 +394,23 @@ Each entry: the [INFER] statement, then the author's response on the same line.
 Example: [INFER] No OTEL collector config found — migration is not in scope here. → Confirmed.>
 ```
 
-After writing `intent.md`, print the full document to the user and ask for a single-pass
-review:
+After writing `intent.md`, print the full document to the user.
+
+If all three sub-phases completed without halting (no P0 blockers, no unresolved contradictions,
+all inferences ratified), the clarification process has already verified the intent — proceed
+directly to publishing and Step 3 without asking the user to review or confirm.
+
+Only pause for a single-pass review if there are residual open questions the Clarifier could not
+resolve — for example, TIMEBOX items the user did not fully address. In that case, surface the
+specific gaps:
 
 ```
-Intent document written: .claude-work/EPIC_<slug>/intent.md
+Intent document written. One unresolved item before I proceed:
 
-Review it and tell me anything that is wrong, missing, or misrepresented.
-One round of edits — then the Decomposer agent proceeds with this as its source of truth.
-(Type "looks good" or equivalent to proceed without changes.)
+<state the specific gap>
+
+Clarify this and I'll post the document and start decomposition.
 ```
-
-Apply any requested edits and write the final `intent.md`. Do not loop — one edit pass only.
 
 **Publish `intent.md` to GitHub** (skip only if no issue exists, i.e. free-form with no issue yet):
 
