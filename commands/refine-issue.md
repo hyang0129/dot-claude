@@ -18,20 +18,27 @@ The refined spec is the intended input to `/resolve-issue` or `/fix-issue`.
 
 ## Args
 
-`/refine-issue <issue> [--post]`
+`/refine-issue <issue> [--no-post]`
 
 - `issue`: required. One of:
   - GitHub issue number (e.g. `42`)
   - Full GitHub issue URL (e.g. `https://github.com/org/repo/issues/42`)
   - Quoted free-form description (e.g. `"add reading level checks to the generation pipeline"`)
-- `--post`: optional flag. If present and `issue` is a number or URL, post the refined spec as a
-  comment on the GitHub issue after producing it.
+- `--no-post`: optional flag. If present and `issue` is a number or URL, keep the refined spec
+  local only — do not post it to GitHub. Ignored in free-form mode (see below).
 
 Detect whether `issue` is a number/URL/repo-ref or a free-form description:
 - If it matches `^[\w.-]+/[\w.-]+#\d+$` (e.g. `owner/repo#42`) → extract `owner/repo` and issue number.
 - If it matches `^\d+$` → treat as issue number (repo must be detected).
 - If it matches `^https?://github\.com/` → extract `owner/repo` and issue number from the URL.
-- Otherwise → treat as free-form description. `--post` is silently ignored in this mode.
+- Otherwise → treat as free-form description. `--no-post` is silently ignored in this mode
+  (free-form always creates a new issue).
+
+**Default posting behavior:**
+- Issue reference mode (number, URL, `owner/repo#N`): post the refined spec to GitHub **by default**.
+  Pass `--no-post` to suppress this and keep the spec local only.
+- Free-form mode: always creates a new GitHub issue — `--no-post` has no effect. Warn if the user
+  passes it: *"`--no-post` ignored; free-form mode always creates a new issue."*
 
 ---
 
@@ -84,11 +91,10 @@ if [ -z "$GIT_ROOT" ]; then
 fi
 ```
 
-If `GIT_ROOT` is empty, the Refiner agent will work without codebase context — note this in the
+If `GIT_ROOT` is empty, the Spec agent will work without codebase context — note this in the
 output spec. Do not stop. Skip the scratch directory setup below.
 
-If `GIT_ROOT` is set, the **orchestrator** (you, not the subagent) must verify the scratch
-directory before spawning anything:
+If `GIT_ROOT` is set, verify the scratch directory exists before spawning anything:
 ```bash
 test -d "$GIT_ROOT/.claude-work" && echo "EXISTS" || echo "MISSING"
 ```
@@ -100,24 +106,156 @@ Then re-run this command.
 ```
 Do not proceed until the directory exists.
 
-When `GIT_ROOT` is empty, the Refiner agent writes its output to a temp path instead:
-`/tmp/REFINED_<slug>.md`. Report this path to the user in the final summary.
+When `GIT_ROOT` is empty, the Spec agent writes its output to a temp path instead:
+`/tmp/REFINED_<slug>-<number>.md`. Report this path to the user in the final summary.
 
 ---
 
-## Step 1 — Spawn Refiner Agent
+## Step 1 — Resume Check
 
-Spawn a **Refiner agent** (`model: "opus"`).
+Before spawning anything, check whether a prior refinement exists for this issue:
+
+```bash
+ls "$GIT_ROOT/.claude-work/REFINED_"*"-<number>.md" 2>/dev/null
+```
+
+If a file is found, ask the user:
+```
+Found existing refined spec: .claude-work/REFINED_<slug>-<number>.md
+
+Resume from it (r) or start over (s)?
+```
+
+- If **resume**: read the existing file, skip to Step 4 (present it) and proceed from there.
+- If **start over**: delete the old file and continue to Step 2 (spawn Intent agent).
+- In free-form mode (no issue number): skip this check entirely.
+
+---
+
+## Step 2 — Intent Agent (interactive, multi-round)
+
+Spawn an **Intent agent** (`model: "opus"`).
+
+This is the most important agent in this workflow. Its sole job is to fully understand what the
+user wants and why — not to produce a document, not to search code. It runs as many rounds as
+needed until intent is completely understood.
 
 Pass it:
 - The full issue body + comments (if issue reference mode), or the free-form description.
+- Instructions to conduct an open-ended dialogue with the user until intent is fully understood.
+
+### Intent agent instructions
+
+Role: dialogue-only. No file writes, no code search, no spec production.
+
+**You are a requirements interviewer, not a spec writer.**
+
+Your job is to understand the user's intent so completely that a different agent — who has never
+spoken to the user — could produce a spec the user would sign off on without a single correction.
+
+**Start by reading the issue or description carefully.** Then immediately begin probing. Do not
+attempt to summarize or restate the issue back to the user — start asking.
+
+**Probe dimensions (work through all of these across as many rounds as needed):**
+
+1. **The real outcome**
+   - What does success look like from the user's perspective — not a code change, a *lived experience*?
+   - What would change about their day if this were done right?
+   - If the feature disappeared tomorrow, what would they miss?
+
+2. **Hidden scope**
+   - Are there places where this behavior should apply that the issue doesn't mention?
+   - Has the user ever been surprised that something "worked" in one place but not another?
+   - Is there anything they assumed was obvious that they didn't bother writing down?
+
+3. **Acceptance conditions**
+   - How will they know it's working? What will they check?
+   - What's the simplest thing that would count as "not done"?
+   - Is there a failure mode they've seen before that they definitely don't want to repeat?
+
+4. **Constraints and non-goals**
+   - What should explicitly NOT change as part of this?
+   - Is there anything that would be tempting to add but is out of scope for now?
+   - Are there performance, backward-compatibility, or API-stability concerns?
+
+5. **Priority and motivation**
+   - Why is this important now? What triggered the request?
+   - Is there a deadline, a downstream dependency, or a user complaint that drove this?
+
+**Conversation rules:**
+- Ask one or two focused questions per round — not a numbered list of ten.
+- When the user answers, synthesize what you've learned before asking the next question.
+  Show them you understood, then probe the next gap.
+- If an answer opens a new dimension you hadn't considered, follow it.
+- Do not declare understanding complete until you can articulate:
+  - The job statement (when / want / so I can) with a real-world outcome
+  - At least one hidden assumption the issue didn't surface
+  - What "done" looks like from the user's perspective
+  - What's explicitly out of scope
+- Signal completion by saying:
+  ```
+  I think I have a complete picture of your intent. Here's what I'll hand off to the spec:
+
+  **Job statement:** When I <situation>, I want to <motivation>, so I can <real-world outcome>.
+  **Core behavioral intent:** <2–3 sentences on observable change>
+  **Key hidden assumptions:** <bullet list>
+  **Done looks like:** <what the user will check>
+  **Out of scope:** <explicit exclusions>
+
+  Does this capture it accurately, or is there anything to correct?
+  ```
+- Wait for the user to confirm or correct before concluding.
+
+**Output:** When the user confirms, write a structured intent summary to:
+`.claude-work/INTENT_<slug>-<number>.md`
+
+```markdown
+# Intent Summary: <title>
+
+## Job Statement
+When I <situation>, I want to <motivation>, so I can <real-world outcome>.
+
+## Behavioral Intent
+<2–3 sentences: what must be observably different after this is resolved, from the user's
+perspective — describe the experience, not the implementation>
+
+## Hidden Assumptions Surfaced
+- <assumption the issue author made that may not be obvious to an implementer>
+- <assumption about which components are in scope>
+- <any "and obviously it should work in X too" that was never written down>
+
+## Acceptance Conditions (user-stated)
+<What the user said they will check. Not test cases — their natural language description of
+"done." The Spec agent will formalize these into scenarios.>
+
+## Out of Scope
+<Explicit exclusions, confirmed with the user>
+
+## Motivation Context
+<Why now, what triggered it, any urgency or downstream dependency>
+
+## Clarifying Q&A Log
+<A compact log of the key exchanges — question → answer — that surfaced non-obvious intent.
+Include only rounds that changed understanding, not small clarifications.>
+```
+
+---
+
+## Step 3 — Spec Agent (one-shot formalization)
+
+After the Intent agent completes and the intent summary is written, spawn a **Spec agent**
+(`model: "opus"`).
+
+Pass it:
+- The full issue body + comments (if issue reference mode), or the free-form description.
+- The path to the intent summary: `.claude-work/INTENT_<slug>-<number>.md`
 - `GIT_ROOT` (or note that codebase context is unavailable).
-- The output path: `.claude-work/REFINED_<slug>.md` (or `/tmp/REFINED_<slug>.md` if GIT_ROOT
-  is empty) where `<slug>` is a 3–4 word kebab-case summary of the issue title or description.
+- The output path: `.claude-work/REFINED_<slug>-<number>.md`
 
-### Refiner agent instructions
+### Spec agent instructions
 
-Role: read-only research + produce refined spec. No file writes except the output document.
+Role: read-only codebase research + produce refined spec. No file writes except the output document.
+No dialogue with the user — all intent is already captured in the intent summary.
 
 **Context bootstrap (do this before anything else):**
 1. Read `~/.claude/CLAUDE.md` (global instructions) and `$GIT_ROOT/CLAUDE.md` (repo instructions)
@@ -125,38 +263,55 @@ Role: read-only research + produce refined spec. No file writes except the outpu
 2. If `.codesight/CODESIGHT.md` exists at `$GIT_ROOT`, read it in full.
 3. If `docs/agent_index.md` exists at `$GIT_ROOT`, read it in full.
    If not found there, glob for `**/agent_index.md` and read any match.
+4. Read the intent summary at `.claude-work/INTENT_<slug>-<number>.md` in full. This is your
+   source of truth for what the user wants — treat it as authoritative.
 
-**Phase A — Understand the stated request**
+**Phase A — Codebase surface area research**
 
-Read the issue or description in full. Identify:
-- What the author *literally asked for* (the stated task)
-- What they almost certainly *actually want* (the observable outcome)
-- Any language that suggests partial awareness of the system (e.g. "add a check" when they mean
-  "the output should meet a standard")
+Search the codebase to enumerate *every place where the behavior described in the intent summary
+must be present*. Do not assume the issue author knows all the relevant components.
 
-**Phase B — Codebase surface area research**
+**Required search checklist — perform all of these before declaring surface area complete:**
+1. The user-facing verb from the issue title (e.g. "validate", "check", "generate")
+2. The object noun from the issue title (e.g. "reading level", "FK grade", "token")
+3. Any existing symbol or function that already does a fraction of the requested behavior
+4. All files matching repo-convention globs for entry points:
+   `**/cli*`, `**/commands*`, `**/handlers*`, `**/routes*`, `**/pipeline*`, `**/server*`
+5. Any config, hook, or script files that invoke the affected behavior
 
-Search the codebase to enumerate *every place where the behavior the user wants must be present*.
-Do not assume the issue author knows all the relevant components.
+After completing the checklist, state explicitly:
+```
+Surface area search: examined N files, found M candidate matches across the required checklist.
+Coverage confidence: [high / medium / low — explain if medium or low]
+```
 
-Key searches to perform:
-- Grep for symbols, function names, and domain terms from the issue/description.
-- Identify all user-facing entry points (CLI commands, API routes, server handlers, scripts,
-  configuration hooks) that are relevant to the requested behavior.
-- For each entry point found, check whether the relevant behavior currently exists there, is
-  partially present, or is entirely absent.
-- Look for prior implementations that were added but not wired in — search for functions that
-  are defined but never called in any execution path.
+For each entry point found, check whether the relevant behavior currently exists there, is
+partially present, or is entirely absent.
 
-**Phase C — Produce the refined spec**
+**Dead-code check:** For any symbol that appears to implement the requested behavior, grep for
+its name and count call sites. If call sites ≤ 1 (i.e., only the definition), flag it as
+suspicious: *"defined at `src/quality.py:42` but found no call sites — may be unwired."*
+Do not conclude it is unreachable; list the evidence and let the implementer verify.
 
-Write `.claude-work/REFINED_<slug>.md`:
+If `GIT_ROOT` is empty, Phase A cannot run against a real codebase. Mark all surface area rows
+as `[UNVERIFIED — no codebase]` and note that the user must validate the table manually.
+
+**Phase B — Produce the refined spec**
+
+Write `.claude-work/REFINED_<slug>-<number>.md`. Ground every section in the intent summary —
+do not invent intent. If the intent summary is silent on something, say so explicitly.
 
 ```markdown
 # Refined Spec: <title> (#<number> | free-form)
 
 ## Job Statement
 When I <situation>, I want to <motivation>, so I can <outcome>.
+
+*Bad example (too shallow):* "When I generate content, I want to check reading level, so I can
+have reading level checked." The outcome is just the motivation restated.
+*Good example:* "When I generate content, I want to check reading level, so I can confidently
+publish material that any 6th grader can read without friction."
+The outcome must describe a real-world consequence, not just the presence of the mechanism.
 
 ## Behavioral Intent
 <2–3 sentences: what must be *observably different* after this is resolved. Write this from
@@ -195,11 +350,14 @@ Every component that must change for all acceptance scenarios to pass. This is t
 list — if a component is not on this list, it will not be touched. If the implementer believes
 something is missing, they must flag it before writing code.
 
-| Component | File / path | Change required | Acceptance scenario(s) it satisfies |
+| Component | File / path (with line numbers) | Change required | Acceptance scenario(s) it satisfies |
 |---|---|---|---|
-| <e.g. FK check function> | `src/pipeline/quality.py` | Wire into generation pipeline | Entry Point: CLI, Entry Point: Server |
-| <e.g. CLI `generate` command> | `src/cli/generate.py` | Pass FK result to output validator | Entry Point: CLI |
-| <e.g. Orchestration server> | `server/handlers/run.py` | Apply same validation before returning | Entry Point: Server |
+| <e.g. FK check function> | `src/pipeline/quality.py:42` | Wire into generation pipeline | Entry Point: CLI, Entry Point: Server |
+| <e.g. CLI `generate` command> | `src/cli/generate.py:118` | Pass FK result to output validator | Entry Point: CLI |
+| <e.g. Orchestration server> | `server/handlers/run.py:77` | Apply same validation before returning | Entry Point: Server |
+
+Include the starting line number of the relevant function or block. If line numbers are
+unavailable (e.g., no codebase), mark the path as `[UNVERIFIED]`.
 
 ## Out of Scope
 <Anything that might seem related but should NOT be changed in this issue. Be explicit — if
@@ -214,14 +372,17 @@ directly to implementation.">
 - Every acceptance scenario is for a distinct entry point (not a distinct feature).
 - Every row in the surface area table is traceable to at least one acceptance scenario.
 - The behavioral intent describes what the user *observes*, not what the code *does*.
-- The job statement passes the "so I can <outcome>" test — if the outcome is trivially the same
-  as the motivation, the job statement is not deep enough; revise it.
+- The job statement outcome is a real-world consequence, not a restatement of the motivation.
+- The surface area search coverage statement is present and honest.
+- Any suspicious dead-code symbols are flagged in the surface area table or as a note.
+- The job statement, behavioral intent, and hidden assumptions are grounded in the intent summary —
+  not inferred independently. If the intent summary is missing something, flag it rather than guess.
 
 ---
 
-## Step 2 — Present the Refined Spec
+## Step 4 — Present the Refined Spec
 
-Read `.claude-work/REFINED_<slug>.md` and print it to the user in full.
+Read `.claude-work/REFINED_<slug>-<number>.md` and print it to the user in full.
 
 Then present this summary:
 
@@ -229,19 +390,19 @@ Then present this summary:
 ## refine-issue complete
 
 Input: #<number> <title> | "<description>"
-Output: .claude-work/REFINED_<slug>.md
+Intent summary: .claude-work/INTENT_<slug>-<number>.md
+Output: .claude-work/REFINED_<slug>-<number>.md
+Search coverage: <coverage statement from Phase A>
 
 Entry points identified: <N>
 Surface area: <N> components
 
 Next step: /resolve-issue <number> [or /fix-issue <number>]
-Note: share the refined spec with the issue or copy it into the issue body before resolving,
-so the implementation agent works from the behavioral intent, not the original description.
 ```
 
 ---
 
-## Step 3 — Publish to GitHub
+## Step 5 — Publish to GitHub
 
 ### If the input was a free-form description (no existing issue)
 
@@ -253,7 +414,7 @@ gh issue create --repo <REPO> \
   --body "$(cat <<'EOF'
 ## Refined Spec (generated by /refine-issue)
 
-<paste the full contents of .claude-work/REFINED_<slug>.md here>
+<paste the full contents of .claude-work/REFINED_<slug>-<number>.md here>
 
 ---
 *This spec was generated to surface behavioral intent and surface area before implementation.
@@ -272,7 +433,7 @@ Created issue #<number>: <url>
 Next step: /resolve-issue <number> [or /fix-issue <number>]
 ```
 
-### If the input was an issue reference and `--post` was passed
+### If the input was an issue reference and `--no-post` was NOT passed (default)
 
 Post the refined spec as a comment on the existing issue:
 
@@ -280,7 +441,7 @@ Post the refined spec as a comment on the existing issue:
 gh issue comment <number> --repo <REPO> --body "$(cat <<'EOF'
 ## Refined Spec (generated by /refine-issue)
 
-<paste the full contents of .claude-work/REFINED_<slug>.md here>
+<paste the full contents of .claude-work/REFINED_<slug>-<number>.md here>
 
 ---
 *This spec was generated to surface behavioral intent and surface area before implementation.
@@ -294,41 +455,47 @@ Confirm to the user:
 Refined spec posted as a comment on issue #<number>.
 ```
 
-### If the input was an issue reference without `--post`
+### If the input was an issue reference and `--no-post` was passed
 
 Do not post to GitHub. The spec exists only locally.
 
 ---
 
-## Step 4 — Keep the Issue in Sync
+## Step 6 — Keep the Issue in Sync
 
-**The GitHub issue is the master version of the spec.** The local `.claude-work/REFINED_<slug>.md`
+**The GitHub issue is the master version of the spec.** The local `.claude-work/REFINED_<slug>-<number>.md`
 is a working copy only. The issue survives context resets, session outages, and new conversation
-windows — the local file does not. Treat every spec update as incomplete until the GitHub issue
-reflects it.
+windows — the local file does not.
 
 After presenting the spec, the user may give feedback, answer clarifying questions, or request
-changes. **Any user answer that materially affects the spec must be pushed to the GitHub issue
-immediately** — before continuing the conversation or asking further questions:
+changes. Collect the user's answers during Q&A without pushing after each one. When the user
+signals they are done (e.g., "looks good", "update the issue", "that's all", end of clarifying
+round), apply all accumulated changes at once:
 
-1. Update the local `.claude-work/REFINED_<slug>.md` with the change.
-2. Push the update to GitHub right away:
+1. Update the local `.claude-work/REFINED_<slug>-<number>.md` with all changes.
+2. Push the updated spec to GitHub:
 
 ```bash
-# If the spec is the issue body (free-form → created issue, or --post on existing issue):
-gh issue edit <number> --repo <REPO> --body "$(cat .claude-work/REFINED_<slug>.md)"
+# If the spec is the issue body (free-form → created issue):
+gh issue edit <number> --repo <REPO> --body "$(cat .claude-work/REFINED_<slug>-<number>.md)"
 
-# If the spec was posted as a comment (--post mode):
+# If the spec was posted as a comment (default issue-reference mode):
 gh issue comment <number> --repo <REPO> --body "$(cat <<'EOF'
-## Spec Update
+## Spec Update (generated by /refine-issue)
 
-<describe what changed and why, then paste the updated section>
+<describe what changed and why, then paste the updated full spec>
 EOF
 )"
 ```
 
-Do not batch multiple user answers before pushing — push after each change. If the session ends
-before the issue is updated, the change is lost.
+**Bright-line push rule:** push when the user's input changes any of:
+- Behavioral Intent
+- Acceptance Scenarios
+- Surface Area table
+- Out of Scope
+
+Do not push for clarifying answers that only add context without changing the above sections.
+If the session ends before the issue is updated, note to the user which changes were not pushed.
 
 ---
 
@@ -337,8 +504,10 @@ before the issue is updated, the change is lost.
 - Never write or modify source files.
 - Never open branches, commits, or PRs.
 - Never assume the issue author has named all the components that need to change.
-- If a codebase is unavailable (no git root), the Refiner agent must clearly mark the surface
+- If a codebase is unavailable (no git root), the Spec agent must clearly mark the surface
   area table as "unverified — codebase not available" and the user must validate it manually.
 - The output spec is a *recommendation*, not a binding contract — the user should review it
   before passing it to `/fix-issue` or `/resolve-issue`.
 - If blocked or uncertain about the repo structure, stop and report rather than guessing.
+- The Intent agent must not produce a spec — only the intent summary. The Spec agent must not
+  conduct dialogue — only formalize what the Intent agent discovered.
