@@ -238,7 +238,7 @@ Include only rounds that changed understanding, not small clarifications.>
 ## Step 3 — Spec Agent (one-shot formalization)
 
 After the Intent agent completes and the intent summary is written, spawn a **Spec agent**
-(`model: "opus"`).
+(`model: "claude-opus-4-6"`).
 
 Pass it:
 - The full issue body + comments (if issue reference mode), or the free-form description.

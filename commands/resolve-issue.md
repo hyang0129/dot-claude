@@ -22,7 +22,7 @@ All arguments are forwarded verbatim to the fix-issue subagent.
 
 ## Step 1 — fix-issue phase
 
-Spawn an Agent subagent (`model: "opus"`) to run the fix-issue skill with the provided arguments.
+Spawn an Agent subagent (`model: "claude-opus-4-6"`) to run the fix-issue skill with the provided arguments.
 
 Append these instructions to the subagent prompt:
 
@@ -50,7 +50,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block from its output.
 
 ## Step 2 — review-fix phase
 
-Spawn an Agent subagent (`model: "opus"`) to run the review-fix skill:
+Spawn an Agent subagent (`model: "claude-opus-4-6"`) to run the review-fix skill:
 
 ```
 /review-fix <WORK_DIR> <BRANCH>
@@ -85,7 +85,7 @@ the user. Do not proceed to Step 3.
 
 ## Step 3 — rebase phase
 
-Spawn an Agent subagent (`model: "opus"`) to run the rebase skill:
+Spawn an Agent subagent (`model: "claude-opus-4-6"`) to run the rebase skill:
 
 ```
 /rebase <BRANCH>

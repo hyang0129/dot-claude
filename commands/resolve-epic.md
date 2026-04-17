@@ -44,7 +44,7 @@ gh issue view <number> --repo <REPO> --json number,title,body,labels,comments,as
 
 Verify the issue title or labels indicate it is an epic (title prefix `epic:`, label `epic`, or body contains "## Epic Summary" or similar). If not obviously an epic, ask the user to confirm.
 
-### Setup Agent (`model: "sonnet"`)
+### Setup Agent (`model: "claude-sonnet-4-6"`)
 
 Spawn a **Setup Agent** to detect the base branch, resolve the git root, and create the epic branch. The orchestrator does not run git commands directly.
 
@@ -120,7 +120,7 @@ When spawning any subagent that reads or modifies source code (Research Agent, P
 
 Do **not** add this bootstrap to narrow utility agents (Setup Agent, Issue Creation Agent, Merge & Sync Agent, Smoke Test Runner, Full Test Runner, Poll Agent, Mermaid Agent).
 
-### Phase 2a — Research Agent (`model: "opus"`)
+### Phase 2a — Research Agent (`model: "claude-opus-4-6"`)
 
 Before the planning team debates, one agent gathers the raw facts.
 
@@ -151,7 +151,7 @@ Role: read-only codebase research. No file writes except the research document.
    [Files with high fan-out, shared interfaces, complex state, or no test coverage]
    ```
 
-### Phase 2b — Planning Team Debate (parallel, all `model: "opus"`)
+### Phase 2b — Planning Team Debate (parallel, all `model: "claude-opus-4-6"`)
 
 Spawn 4-5 agents in parallel, each with a different perspective. All receive the epic issue body and `.claude-work/EPIC_<number>_RESEARCH.md` as input.
 
@@ -163,7 +163,7 @@ Spawn 4-5 agents in parallel, each with a different perspective. All receive the
 | **Risk & Rollback Analyst** | Failure modes, reversibility, blast radius | What can go wrong at each stage? If a sub-issue fails, can we roll back cleanly? Where are the points of no return? |
 | **Scope Guardian** | Scope creep, minimal viable slicing, YAGNI | Is every proposed sub-issue necessary for the epic's acceptance criteria? Are we over-engineering the decomposition? |
 
-Each agent produces a **200-300 word position paper** (`model: "opus"`) addressing:
+Each agent produces a **200-300 word position paper** (`model: "claude-opus-4-6"`) addressing:
 1. Their proposed sub-issue decomposition (ordered list with titles and 1-line scopes)
 2. Architecture questions they believe must be resolved before implementation
 3. One risk or concern the other perspectives might miss
@@ -171,7 +171,7 @@ Each agent produces a **200-300 word position paper** (`model: "opus"`) addressi
 
 Output: `.claude-work/EPIC_<number>_POSITION_<role>.md` for each agent.
 
-### Phase 2c — Synthesis Agent (`model: "opus"`)
+### Phase 2c — Synthesis Agent (`model: "claude-opus-4-6"`)
 
 After all position papers are complete, spawn a **Synthesis Agent** that reads all of them and produces the final decomposition.
 
@@ -247,7 +247,7 @@ After the Synthesis Agent finishes, read `.claude-work/EPIC_<number>_DECOMPOSITI
 
 ## Step 3 — Front-Loaded ADR (if architecture questions exist)
 
-If the decomposition lists architecture questions, spawn an **Architect Agent** (`model: "opus"`).
+If the decomposition lists architecture questions, spawn an **Architect Agent** (`model: "claude-opus-4-6"`).
 
 ### Architect Agent instructions
 
@@ -272,7 +272,7 @@ If the decomposition has **no** architecture questions, skip this step entirely 
 
 ## Step 4 — Create Sub-Issues on GitHub
 
-Spawn an **Issue Creation Agent** (`model: "sonnet"`) to create the sub-issues and post the tracking comment.
+Spawn an **Issue Creation Agent** (`model: "claude-sonnet-4-6"`) to create the sub-issues and post the tracking comment.
 
 ### Issue Creation Agent instructions
 
@@ -341,7 +341,7 @@ The orchestrator reads the `SUB_ISSUES` list for Step 5.
 
 ## Step 5 — Sequential Sub-Issue Resolution
 
-For each sub-issue in order, spawn a `/resolve-issue` Agent subagent (`model: "opus"`):
+For each sub-issue in order, spawn a `/resolve-issue` Agent subagent (`model: "claude-opus-4-6"`):
 
 ```
 /resolve-issue <sub_issue_number> --base <EPIC_BRANCH>
@@ -370,7 +370,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
 ### On success
 
 1. Record the sub-issue PR URL and number.
-2. Spawn a **Merge & Sync Agent** (`model: "sonnet"`) to merge the sub-issue and update tracking.
+2. Spawn a **Merge & Sync Agent** (`model: "claude-sonnet-4-6"`) to merge the sub-issue and update tracking.
 
    #### Merge & Sync Agent instructions
 
@@ -401,7 +401,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
       ```
 
    If the Merge & Sync Agent returns `SUCCESS=false`, treat as a blocker.
-6. **Integration smoke test gate.** Spawn a **Smoke Test Runner** agent (`model: "sonnet"`) to execute and evaluate the tests.
+6. **Integration smoke test gate.** Spawn a **Smoke Test Runner** agent (`model: "claude-sonnet-4-6"`) to execute and evaluate the tests.
 
    #### Smoke Test Runner instructions
 
@@ -468,7 +468,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
 
    **Set `FIX_CYCLE = 1`, `MAX_FIX_CYCLES = 2`.**
 
-   #### Agent 1 — Diagnostician (`model: "opus"`)
+   #### Agent 1 — Diagnostician (`model: "claude-opus-4-6"`)
 
    Role: read-only root-cause analysis. No file changes.
 
@@ -506,7 +506,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
       [Could this fix break something else? What to re-test after.]
       ```
 
-   #### Agent 2 — Integration Fixer (`model: "sonnet"`)
+   #### Agent 2 — Integration Fixer (`model: "claude-sonnet-4-6"`)
 
    Role: apply the targeted fix. Scope-limited.
 
@@ -526,7 +526,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
       [Why this fix addresses the root cause without side effects]
       ```
 
-   #### Agent 3 — Fix Verifier (`model: "opus"`)
+   #### Agent 3 — Fix Verifier (`model: "claude-opus-4-6"`)
 
    Role: read-only verification. No file changes.
 
@@ -614,7 +614,7 @@ Action required: resolve the blocker on #<sub_issue_number>, then re-run:
 
 After all sub-issues are resolved and merged into the epic branch, run two validation agents.
 
-### 6a — Full Test Runner (`model: "sonnet"`)
+### 6a — Full Test Runner (`model: "claude-sonnet-4-6"`)
 
 Spawn a **Full Test Runner** agent to execute the complete validation suite on the epic branch.
 
@@ -655,7 +655,7 @@ Role: execute tests and report results. No source file changes.
 
 The orchestrator reads the report. If overall FAIL, report as a blocker — do not attempt automated fixes at the epic level. Include which tests failed so the user can diagnose.
 
-### 6b — Verification Agent (`model: "opus"`)
+### 6b — Verification Agent (`model: "claude-opus-4-6"`)
 
 Spawn only if the Full Test Runner reports PASS.
 
@@ -679,7 +679,7 @@ The orchestrator reads the verification report. If any acceptance criteria are n
 
 Create the final PR from the epic branch into `<DEV_BASE>`:
 
-Spawn a **Documentation Agent** (`model: "opus"`) to produce the epic PR body.
+Spawn a **Documentation Agent** (`model: "claude-opus-4-6"`) to produce the epic PR body.
 
 ### Documentation Agent instructions
 

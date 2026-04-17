@@ -99,7 +99,7 @@ When spawning any subagent that reads or modifies source code (Reviewer, Fixer, 
 
 ## Agent Roles
 
-### Agent 1 — Reviewer (`model: "opus"`)
+### Agent 1 — Reviewer (`model: "claude-opus-4-6"`)
 
 **Role**: Read-only analysis. Do NOT make any changes to files.
 
@@ -200,7 +200,7 @@ git push origin <branch>
 
 ---
 
-### Agent 4 — Intent Validator (`model: "opus"`, runs once, after Final Review)
+### Agent 4 — Intent Validator (`model: "claude-opus-4-6"`, runs once, after Final Review)
 
 **Role**: Senior engineer/architect cross-check. Read-only. Do NOT make any changes to files.
 
@@ -246,7 +246,7 @@ git push origin <branch>
 
 ---
 
-### Agent 3+ — Fixer (`model: "sonnet"`, one instance per finding)
+### Agent 3+ — Fixer (`model: "claude-sonnet-4-6"`, one instance per finding)
 
 **Role**: Apply exactly one finding's fix. Do NOT review. Do NOT fix other things noticed along the way.
 

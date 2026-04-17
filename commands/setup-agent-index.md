@@ -374,7 +374,7 @@ Output: `$WORK/gaps-shard-<id>.json`
 
 ### Phase 2b — Cross-shard deduplication and structural gap detection
 
-After all Gap Classifiers complete, spawn a single **Gap Merger agent** (`model: "sonnet"`).
+After all Gap Classifiers complete, spawn a single **Gap Merger agent** (`model: "claude-sonnet-4-6"`).
 
 #### Gap Merger instructions
 
@@ -485,7 +485,7 @@ Do not proceed to Phase 4 until all gaps are accounted for.
 
 ## Phase 4 — Synthesis
 
-Spawn a single **Synthesizer agent** (`model: "opus"`).
+Spawn a single **Synthesizer agent** (`model: "claude-opus-4-6"`).
 
 ### Synthesizer agent instructions
 
@@ -539,7 +539,7 @@ Task:
 
 ## Phase 5 — Parallel Doc Writing
 
-Spawn **Writer agents** (`model: "sonnet"`) in batches of at most **4 concurrent agents** —
+Spawn **Writer agents** (`model: "claude-sonnet-4-6"`) in batches of at most **4 concurrent agents** —
 one per batch of 4–6 module stubs. Start 4 agents, wait for all to finish, then start the next
 batch of up to 4.
 
@@ -599,7 +599,7 @@ mkdir -p "$GIT_ROOT/docs/modules"
 
 ## Phase 6 — Index Assembly
 
-Spawn a single **Assembler agent** (`model: "sonnet"`).
+Spawn a single **Assembler agent** (`model: "claude-sonnet-4-6"`).
 
 ### Assembler agent instructions
 

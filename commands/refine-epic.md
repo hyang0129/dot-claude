@@ -446,7 +446,7 @@ decomposition summary. You don't need to stay.
 The Decomposer runs to completion without requiring user input. Do not interrupt it with
 questions, progress checks, or confirmations. The user reviews the full output in Step 4.
 
-Spawn a **Decomposer agent** (`model: "opus"`).
+Spawn a **Decomposer agent** (`model: "claude-opus-4-6"`).
 
 Pass it:
 - The full epic body + comments (if issue reference mode), or the free-form description.
@@ -780,7 +780,7 @@ The premise: Step 2 captured enough author reasoning that a surrogate seeded fro
 `intent.md` can answer all questions the `/refine-issue` Intent agent would ask —
 without escalating to the real user.
 
-### Per-child: spawn a Surrogate agent (model: "opus")
+### Per-child: spawn a Surrogate agent (model: "claude-sonnet-4-6")
 
 For each child issue, spawn a dedicated Surrogate agent. Do not start the next child
 until the current one completes.

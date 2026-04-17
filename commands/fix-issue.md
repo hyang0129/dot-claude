@@ -281,7 +281,7 @@ If a `tier` argument was passed, use that. Otherwise state your assessment and t
 
 ## Step 2 — Planning
 
-Regardless of tier, spawn a **Planner agent** first (`model: "opus"`).
+Regardless of tier, spawn a **Planner agent** first (`model: "claude-opus-4-6"`).
 
 ### Planner agent instructions
 
@@ -361,7 +361,7 @@ EOF
 
 ## Step 2b — Architecture (Tier 2 with open questions, or Tier 3)
 
-Spawn an **Architect agent** (`model: "opus"`).
+Spawn an **Architect agent** (`model: "claude-opus-4-6"`).
 
 ### Architect agent instructions
 
@@ -454,7 +454,7 @@ EOF
 
 Use the task list from `.claude-work/ISSUE_<number>_PLAN.md` (updated with ADR outcomes if Tier 3).
 
-For each task, spawn the assigned agent with the full task spec. Use `model: "sonnet"` for Coder, Tester, and Integrator agents; use `model: "opus"` for Reviewer agents:
+For each task, spawn the assigned agent with the full task spec. Use `model: "claude-sonnet-4-6"` for Coder, Tester, and Integrator agents; use `model: "claude-opus-4-6"` for Reviewer agents:
 
 ```
 Issue: #<number> — <title>
@@ -536,7 +536,7 @@ If any check fails: identify the failing file(s), re-assign to the responsible a
 
 ## Step 5 — Reviewer
 
-After all checks pass, spawn the **Reviewer agent** (`model: "opus"`).
+After all checks pass, spawn the **Reviewer agent** (`model: "claude-opus-4-6"`).
 
 ### Reviewer agent instructions
 
@@ -619,7 +619,7 @@ EOF
 
 ## Step 6b — PR Documentation Agent
 
-After the PR is open, spawn a **Documentation Agent** (`model: "sonnet"`) to update the PR body with a detailed human-readable report. This runs before `/review-fix` so reviewers have full context when they open the PR.
+After the PR is open, spawn a **Documentation Agent** (`model: "claude-sonnet-4-6"`) to update the PR body with a detailed human-readable report. This runs before `/review-fix` so reviewers have full context when they open the PR.
 
 ### Documentation Agent instructions
 
