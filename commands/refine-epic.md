@@ -175,14 +175,11 @@ intent document is written. Your answers here become the source of truth for eve
 issue that follows.
 ```
 
-Spawn a **Clarifier agent** (`model: "sonnet"`).
+**Run the Clarifier process directly in this session** — do NOT spawn a subagent for this step.
+The Clarifier requires multiple interactive Q&A rounds with the real user; a subagent cannot
+do that (it returns a single result). You are the Clarifier for Step 2.
 
-Pass it:
-- The full epic body + comments (if issue reference mode), or the free-form description.
-- `GIT_ROOT` (or note that codebase context is unavailable).
-- `EPIC_DIR` as the output directory.
-
-### Clarifier agent instructions
+### Clarifier process
 
 Role: elicit intent, scan for calibration signals, produce the epic intent document. No source
 file writes. No branch, commit, or PR creation. One output file: `EPIC_DIR/intent.md`.
@@ -432,7 +429,7 @@ the GitHub post — the local file is the only copy until an issue exists.
 is a working copy only. If the user requests changes after this point, update both the local
 file and post a follow-up comment on the epic issue.
 
-Signal to the orchestrator that the Clarifier is complete and the Decomposer may be spawned.
+The Clarifier process is now complete. Proceed to Step 3 and spawn the Decomposer.
 
 ---
 
@@ -838,16 +835,13 @@ Then proceed immediately to Step 6.
 
 ---
 
-## Step 6 — Present Full Implementation Plan for Approval
+## Step 6 — Post Decomposition Summary
 
-Print the epic index (`EPIC_DIR/index.md`) in full, followed by a summary of every refined
-child spec. Then present:
+Post a summary comment on the GitHub epic issue:
 
-```
-## refine-epic: implementation plan ready
-
-Epic:   #<number> <title>
-Output: .claude-work/EPIC_<slug>-<number>/
+```bash
+gh issue comment <number> --repo <REPO> --body "$(cat <<'EOF'
+## refine-epic: decomposition complete
 
 Child issues and refined specs:
   Child 1: #<n> <title> — <url>
@@ -860,50 +854,18 @@ Dependency order: <list>
 Integration seams: <N>
 Open escalations: <N> (review before /resolve-issue)
 
-Options:
-  (a) approve — proceed to /resolve-issue per child
-  (e) edit — describe what to change in the decomposition or any spec
-  (q) quit — all artifacts saved locally and on GitHub; continue later
-```
-
-- **(a) approve**: proceed to Step 7 (sync the epic issue).
-- **(e) edit**: apply changes to `EPIC_DIR/index.md` and/or the affected child spec file(s),
-  update the relevant GitHub issue comments, then re-present the summary. Loop until approved
-  or quit.
-- **(q) quit**: stop. All issues and specs are already on GitHub. The user resumes by
-  re-running `/refine-epic` or going directly to `/resolve-issue` per child.
-
----
-
-## Step 7 — Sync Epic Issue
-
-After approval, ensure the GitHub epic issue reflects all discussion and decisions made
-during this session. Do not dump the full index — write a concise update comment that
-captures what was decided and why.
-
-```bash
-gh issue comment <number> --repo <REPO> --body "$(cat <<'EOF'
-## Epic Decomposition Summary
-
-**Intent captured:** <one sentence from intent.md §2 Feared Failure Mode>
-**Key decisions:** <bullet list of major tradeoffs resolved in intent.md §3 Decision Priors>
-**Child issues:** <list: #N title — url, one per line>
-**Dependency order:** <prose or abbreviated DAG>
-**Open escalations:** <N — list them, or "none">
-
-Ready for /resolve-issue. Work children in dependency order.
+Ready for /resolve-issue per child, in dependency order.
 EOF
 )"
 ```
 
-If any answers given during Step 6 editing changed intent, invariants, or scope, also
-update the epic issue body or post a follow-up comment capturing the change and the reason.
-
-After posting, tell the user:
+Then tell the user in-chat:
 ```
-Epic updated: <comment url>
+Done. Decomposition posted to <epic issue url>.
 Next step: /resolve-issue <child-number> for each child, in dependency order.
 ```
+
+Stop.
 
 ---
 
@@ -922,12 +884,7 @@ Action: Add the child row to the decomposition table with Behavioral Question =
 `NEEDS HUMAN INPUT` and Effort = `?`. Do not create a draft file for that child. Continue
 drafting other children where the question is answerable.
 
-**Gate 3 — Approval Gate** (blocks handoff to `/resolve-issue`)
-Condition: User has not approved in Step 6 (i.e., chose `q` or has not reached Step 6 yet).
-Action: Do not hand off any child issue to `/resolve-issue`. Child issues and specs exist on
-GitHub but implementation must not begin until the user approves the full plan in Step 6.
-
-**Gate 4 — Sign-Off Gate** (advisory — blocks handoff to `/resolve-issue`)
+**Gate 3 — Sign-Off Gate** (advisory — blocks handoff to `/resolve-issue`)
 Condition: Any required role in the Sign-Off table is PENDING.
 Action: Epic index status must read `DRAFT` or `UNKNOWNS_BLOCKED`, never `READY_TO_EXECUTE`.
 State explicitly in output: *"This epic is not cleared for implementation. Obtain sign-off
@@ -939,8 +896,7 @@ from: <list>."* The Decomposer cannot enforce this mechanically beyond stating i
 
 - Never write or modify source files.
 - Never open branches, commits, or PRs.
-- Child issues are created automatically after decomposition — the approval gate is at
-  Step 6 (after full refinement), not before issue creation. Do not hold issue creation
+- Child issues are created automatically after decomposition. Do not hold issue creation
   waiting for user input unless a P0 unknown blocks it (Gate 1).
 - Rough effort uses T-shirt sizing only (XS/S/M/L/XL). No story points, no hours. Precision
   is false at epic definition time.
