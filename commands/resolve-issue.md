@@ -14,9 +14,22 @@ handoff adherence when all three phases run in a single growing conversation.
 
 ## Args
 
-Same as `/fix-issue`: `/resolve-issue <issue> [tier] [--worktree] [--base <branch>]`
+`/resolve-issue <issue> [tier] [--worktree] [--base <branch>] [--return-only]`
 
-All arguments are forwarded verbatim to the fix-issue subagent.
+- `issue`, `tier`, `--worktree`, `--base`: forwarded verbatim to the fix-issue subagent.
+- `--return-only`: caller-controlled flag — see Entry Conditions below.
+
+---
+
+## Entry Conditions
+
+### `--return-only` absent (standalone)
+
+Default behavior. Run all three phases, present a Final Summary, and report results to the user.
+
+### `--return-only` present (called from `/resolve-epic`)
+
+**Skip the rebase phase (Step 3).** The resolve-epic Merge & Sync Agent squash-merges the PR into the epic branch — a local rebase is not needed and would conflict with that flow.
 
 ---
 

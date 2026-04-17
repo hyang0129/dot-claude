@@ -107,6 +107,10 @@ The orchestrator reads the handoff and sets `GIT_ROOT`, `DEV_BASE`, and `EPIC_BR
 
 The decomposition of an epic into sub-issues is a critical decision that shapes the entire implementation. A single agent's perspective is insufficient — different concerns (architecture, testing, sequencing, risk) must be weighed against each other.
 
+### Subagent Output Rule
+
+**Every subagent must return ONLY its HANDOFF block — nothing else.** Write all verbose output, summaries, and analysis to `.claude-work/` files. The orchestrator parses HANDOFF blocks only; free-form agent output is never read by the orchestrator. Violating this rule bloats the orchestrator's context window and degrades performance across long epics.
+
 ### Subagent Context Bootstrap
 
 When spawning any subagent that reads or modifies source code (Research Agent, Planning Team agents, Synthesis Agent, Architect Agent, Documentation Agent, Integration Fixer, Fix Verifier, Verification Agent), prepend these instructions to its prompt:
@@ -241,13 +245,22 @@ What a human reviewer should verify when reviewing the epic branch → dev PR.]
 | ... | high/medium/low | ... | <agent> |
 ```
 
-After the Synthesis Agent finishes, read `.claude-work/EPIC_<number>_DECOMPOSITION.md`.
+The Synthesis Agent must return ONLY this HANDOFF block (all detail goes to the decomposition file):
+```
+HANDOFF
+HAS_ARCH_QUESTIONS=<true|false>
+SUB_ISSUE_COUNT=<N>
+SUB_ISSUE_TITLES=<title1>|<title2>|... (pipe-delimited, in implementation order)
+END_HANDOFF
+```
+
+The orchestrator parses the HANDOFF block. It does not read the decomposition file directly.
 
 ---
 
 ## Step 3 — Front-Loaded ADR (if architecture questions exist)
 
-If the decomposition lists architecture questions, spawn an **Architect Agent** (`model: "claude-opus-4-6"`).
+If the Synthesis Agent handoff returned `HAS_ARCH_QUESTIONS=true`, spawn an **Architect Agent** (`model: "claude-opus-4-6"`).
 
 ### Architect Agent instructions
 
@@ -341,17 +354,72 @@ The orchestrator reads the `SUB_ISSUES` list for Step 5.
 
 ## Step 5 — Sequential Sub-Issue Resolution
 
-For each sub-issue in order, spawn a `/resolve-issue` Agent subagent (`model: "claude-opus-4-6"`):
+### 5a — Resume Check
+
+Before starting the loop, spawn a **Resume Agent** (`model: "claude-sonnet-4-6"`) to determine where to start.
+
+#### Resume Agent instructions
+
+Role: state detection only. No source file changes, no git changes.
+
+1. Read the epic issue's tracking comment to get the ordered sub-issue list. The tracking comment was posted in Step 4 and contains a table with issue numbers and titles.
+   ```bash
+   gh issue view <epic_number> --repo <REPO> --json comments --jq '.comments[].body' | grep -A 50 "Sub-Issues Created"
+   ```
+
+2. For each sub-issue in the list, check whether it has a merged PR targeting the epic branch:
+   ```bash
+   gh pr list --repo <REPO> --state merged --base "$EPIC_BRANCH" --json number,title,headRefName
+   ```
+   A sub-issue is **complete** if a merged PR targeting the epic branch exists for it.
+
+3. Find any open PRs targeting the epic branch and close them:
+   ```bash
+   gh pr list --repo <REPO> --state open --base "$EPIC_BRANCH" --json number,headRefName
+   ```
+   For each open PR found:
+   ```bash
+   gh pr close <pr_number> --repo <REPO> --comment "Epic workflow interrupted — closing this PR for clean resume. The sub-issue will be re-worked from the current epic branch state."
+   ```
+
+4. Check whether the ADR was already approved by scanning the epic issue's comments for "APPROVED":
+   ```bash
+   gh issue view <epic_number> --repo <REPO> --json comments --jq '[.comments[].body | select(test("APPROVED"))] | length'
+   ```
+   ADR is approved if the count is > 0.
+
+5. Return ONLY this HANDOFF block:
+   ```
+   HANDOFF
+   ADR_ALREADY_APPROVED=<true|false>
+   COMPLETED_SUB_ISSUES=<comma-delimited issue numbers that are done, empty if none>
+   FIRST_PENDING_SUB_ISSUE=<issue number of first incomplete sub-issue, or empty if all done>
+   OPEN_PRS_CLOSED=<comma-delimited PR numbers that were closed, empty if none>
+   END_HANDOFF
+   ```
+
+The orchestrator reads the Resume Agent HANDOFF and:
+- Skips Step 3 (ADR) if `ADR_ALREADY_APPROVED=true`
+- Skips all sub-issues in `COMPLETED_SUB_ISSUES`
+- Starts the loop from `FIRST_PENDING_SUB_ISSUE`
+- If `FIRST_PENDING_SUB_ISSUE` is empty, all sub-issues are done — skip to Step 6
+- If any `OPEN_PRS_CLOSED` were found, note them in the resume log
+
+### 5b — Resolution Loop
+
+For each sub-issue in order (starting from `FIRST_PENDING_SUB_ISSUE`), spawn a `/resolve-issue` Agent subagent (`model: "claude-opus-4-6"`):
 
 ```
-/resolve-issue <sub_issue_number> --base <EPIC_BRANCH>
+/resolve-issue <sub_issue_number> --base <EPIC_BRANCH> --return-only
 ```
 
 If `WORKTREE_MODE` was set, also pass `--worktree`.
 
-Append these instructions to the subagent prompt:
+`--return-only` activates resolve-issue's orchestrator mode: skips the rebase phase and returns the HANDOFF block as the final output.
 
-> After presenting the Final Summary, **stop immediately**. Return the following block as the very last thing in your output:
+Append these instructions to the subagent prompt to specify the expected HANDOFF format:
+
+> Return ONLY the following HANDOFF block and nothing else:
 >
 > ```
 > HANDOFF
@@ -653,11 +721,19 @@ Role: execute tests and report results. No source file changes.
    <raw output for any failed check>
    ```
 
-The orchestrator reads the report. If overall FAIL, report as a blocker — do not attempt automated fixes at the epic level. Include which tests failed so the user can diagnose.
+The Full Test Runner must return ONLY this HANDOFF block (all detail goes to the report file):
+```
+HANDOFF
+OVERALL=<PASS|FAIL>
+FAILING_CHECKS=<comma-delimited list of failing check names, empty if PASS>
+END_HANDOFF
+```
+
+The orchestrator parses the HANDOFF. If `OVERALL=FAIL`, report as a blocker — do not attempt automated fixes at the epic level. Include `FAILING_CHECKS` so the user can diagnose.
 
 ### 6b — Verification Agent (`model: "claude-opus-4-6"`)
 
-Spawn only if the Full Test Runner reports PASS.
+Spawn only if the Full Test Runner HANDOFF returned `OVERALL=PASS`.
 
 #### Verification Agent instructions
 
@@ -670,8 +746,15 @@ Role: read-only acceptance criteria verification. No file changes.
    ```
 3. For each acceptance criterion, verify it is met by the implementation. Produce a checklist with evidence (file paths, function names, test names).
 4. Output `.claude-work/EPIC_<number>_VERIFICATION.md`.
+5. Return ONLY this HANDOFF block (all detail goes to the verification file):
+   ```
+   HANDOFF
+   ALL_CRITERIA_MET=<true|false>
+   UNMET_CRITERIA=<pipe-delimited list of unmet criterion titles, empty if all met>
+   END_HANDOFF
+   ```
 
-The orchestrator reads the verification report. If any acceptance criteria are not met, report which ones and stop as a blocker.
+The orchestrator parses the HANDOFF. If `ALL_CRITERIA_MET=false`, report which criteria are unmet (from `UNMET_CRITERIA`) and stop as a blocker.
 
 ---
 
@@ -765,22 +848,17 @@ Same as `/fix-issue` — after the Documentation Agent produces the PR body with
 
 ## Step 8 — Resume Support
 
-If `/resolve-epic` is re-run on an epic that already has sub-issues and an epic branch:
+Resume is handled automatically by Step 5a (Resume Check). When `/resolve-epic` is re-run on an epic that already has an epic branch and sub-issues:
 
 1. Detect existing epic branch:
    ```bash
    git ls-remote --heads origin "epic/<number>-*"
    ```
-2. Detect existing sub-issues by searching for issues that reference the epic:
-   ```bash
-   gh issue list --repo <REPO> --search "epic #<number>" --json number,title,state
-   ```
-3. For each sub-issue, check if it has a merged PR targeting the epic branch:
-   ```bash
-   gh pr list --repo <REPO> --head "fix/issue-<sub_number>-*" --state merged --base "$EPIC_BRANCH" --json number
-   ```
-4. Skip completed sub-issues. Resume from the first incomplete one.
-5. If the ADR was already approved (check for "APPROVED" comment on the epic), skip Step 3.
+   If the branch exists, skip Step 1's branch creation (Setup Agent still runs to establish `GIT_ROOT`, `DEV_BASE`, and `EPIC_BRANCH`).
+
+2. Detect existing sub-issues from the tracking comment on the epic issue (Step 4 posts this). If the tracking comment exists, skip Steps 2–4 entirely and jump to Step 5.
+
+3. Step 5a (Resume Check) handles the rest: detecting completed sub-issues, closing any stale open PRs, checking ADR approval, and finding the first pending sub-issue.
 
 ---
 
@@ -818,7 +896,8 @@ See PR for full checklist — human review required before merge into <DEV_BASE>
 
 ## Constraints
 
-- **The orchestrator only delegates and reads.** It never runs git commands, gh commands, bash commands, or modifies any files. All actions (branch creation, issue creation, merging, testing, committing, pushing, posting comments) are performed by spawned subagents. The orchestrator's job is to: (1) spawn agents with the right instructions and context, (2) read their handoff blocks and artifact files, (3) decide what to do next based on those results.
+- **The orchestrator only delegates and reads HANDOFF blocks.** It never runs git commands, gh commands, bash commands, or modifies any files. All actions (branch creation, issue creation, merging, testing, committing, pushing, posting comments) are performed by spawned subagents. The orchestrator's job is to: (1) spawn agents with the right instructions and context, (2) parse their HANDOFF blocks, (3) decide what to do next based on those results.
+- **Subagents must return ONLY their HANDOFF block and nothing else.** All summaries, explanations, and verbose output must go to `.claude-work/` files. The orchestrator never reads full artifact files — it only parses compact HANDOFF blocks. This is critical for keeping the orchestrator's context window clean across a long multi-sub-issue run.
 - One epic branch per epic. One epic PR into `<DEV_BASE>`.
 - Sub-issue PRs target the epic branch, not `<DEV_BASE>`.
 - Sub-issue PRs are squash-merged into the epic branch automatically after `/resolve-issue` succeeds.
