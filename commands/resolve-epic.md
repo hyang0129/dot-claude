@@ -692,7 +692,8 @@ Role: read-only research + PR body creation. No source file modifications.
    ```
 2. Read the original epic issue, all sub-issues, and their PRs.
 3. Read `.claude-work/EPIC_<number>_DECOMPOSITION.md`, `.claude-work/EPIC_<number>_ADR.md` (if exists), and `.claude-work/EPIC_<number>_VERIFICATION.md`.
-4. Produce the PR body.
+4. Collect all sub-issue numbers from the decomposition (or the tracking comment on the epic issue). You will need them to emit `Closes` keywords for each one.
+5. Produce the PR body.
 
 ```bash
 gh pr create --repo <REPO> \
@@ -701,6 +702,9 @@ gh pr create --repo <REPO> \
   --title "epic(#<number>): <title>" \
   --body "$(cat <<'EOF'
 Closes #<number>
+Closes #<sub_num1>
+Closes #<sub_num2>
+[one Closes line per sub-issue — include all sub-issue numbers from the decomposition]
 
 ## Epic Summary
 
