@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Orchestrator only. Sequences `/fix-issue`, `/review-fix`, and `/rebase` as isolated subagents with fresh context windows.
+Orchestrator only. Sequences `/fix-issue`, `/pr-review-cycle`, and `/pr-finalize` as isolated subagents with fresh context windows.
 
 **This command never reads files, never runs git commands, and never writes code.**
 Its sole job is to pass structured handoff data between the three phases.
@@ -39,7 +39,7 @@ Spawn an Agent subagent (`model: "claude-opus-4-6"`) to run the fix-issue skill 
 
 Append these instructions to the subagent prompt:
 
-> After presenting the Final Summary, **stop immediately**. Do not invoke `/review-fix` or any
+> After presenting the Final Summary, **stop immediately**. Do not invoke `/pr-review-cycle` or any
 > other command — the orchestrator handles sequencing. Return the following block as the very
 > last thing in your output:
 >
@@ -61,18 +61,18 @@ Wait for the subagent to complete. Parse the `HANDOFF` block from its output.
 
 ---
 
-## Step 2 — review-fix phase
+## Step 2 — pr-review-cycle phase
 
-Spawn an Agent subagent (`model: "claude-opus-4-6"`) to run the review-fix skill:
+Spawn an Agent subagent (`model: "claude-opus-4-6"`) to run the pr-review-cycle skill:
 
 ```
-/review-fix <WORK_DIR> <BRANCH>
+/pr-review-cycle <WORK_DIR> <BRANCH>
 ```
 
 Append these instructions to the subagent prompt:
 
 > After presenting the Human Review Summary and posting the PR comment with the
-> `<!-- review-fix-summary -->` sentinel, **stop immediately**. Do not invoke `/rebase` —
+> `<!-- review-fix-summary -->` sentinel, **stop immediately**. Do not invoke `/pr-finalize` —
 > the orchestrator handles sequencing. Return the following block as the very last thing
 > in your output:
 >
@@ -84,7 +84,7 @@ Append these instructions to the subagent prompt:
 > END_HANDOFF
 > ```
 >
-> Blockers that prevent /rebase from running:
+> Blockers that prevent /pr-finalize from running:
 > - Any batch failed its tests and was not committed
 > - The final push failed
 > - The intent validator found high-risk findings that were not resolved
@@ -96,15 +96,15 @@ the user. Do not proceed to Step 3.
 
 ---
 
-## Step 3 — rebase phase
+## Step 3 — pr-finalize phase
 
-Spawn an Agent subagent (`model: "claude-opus-4-6"`) to run the rebase skill:
+Spawn an Agent subagent (`model: "claude-opus-4-6"`) to run the pr-finalize skill:
 
 ```
-/rebase <BRANCH>
+/pr-finalize <BRANCH>
 ```
 
-No additional instructions needed — rebase runs to its own terminal state (READY or BLOCKER)
+No additional instructions needed — pr-finalize runs to its own terminal state (READY or BLOCKER)
 and reports to the user directly.
 
 Wait for the subagent to complete. Relay its terminal state to the user.
@@ -119,8 +119,8 @@ Present to the user:
 ## resolve-issue complete: #<number> <title>
 
 Phase 1 — fix-issue:  ✓ PR #<PR_NUMBER> created (<PR_URL>)
-Phase 2 — review-fix: ✓ <N> findings addressed, <N> cycles
-Phase 3 — rebase:     <READY ✓ | BLOCKER ✗ — see above>
+Phase 2 — pr-review-cycle: ✓ <N> findings addressed, <N> cycles
+Phase 3 — pr-finalize:     <READY ✓ | BLOCKER ✗ — see above>
 
 Branch: <BRANCH>
 PR: <PR_URL>

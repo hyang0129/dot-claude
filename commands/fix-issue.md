@@ -431,7 +431,7 @@ Please review and select your preferred options directly on the issue, then comm
 **Do not spawn any implementation agents until the user has responded on the issue.**
 
 Poll for the user's response by checking issue comments. When a comment containing "APPROVED" or "REJECT" is found:
-- **APPROVED**: read the checkbox states from the ADR comment to determine which options were selected. Update `.claude-work/ISSUE_<number>_ADR.md` status to `ACCEPTED` and revise per any overrides or "Other" comments.
+- **APPROVED**: read the checkbox states from the ADR comment to determine which options were selected. **Before proceeding, verify that every decision has exactly one option checked.** If any decision has zero or multiple boxes checked, post a follow-up comment listing the unresolved decisions and wait for another APPROVED comment — do not treat partial approval as complete. Once all decisions are resolved, update `.claude-work/ISSUE_<number>_ADR.md` status to `ACCEPTED` and revise per any overrides or "Other" comments.
 - **REJECT**: stop and report to the user in chat. Do not proceed with implementation.
 
 **Post approved decisions to the issue:**
@@ -619,7 +619,7 @@ EOF
 
 ## Step 6b — PR Documentation Agent
 
-After the PR is open, spawn a **Documentation Agent** (`model: "claude-sonnet-4-6"`) to update the PR body with a detailed human-readable report. This runs before `/review-fix` so reviewers have full context when they open the PR.
+After the PR is open, spawn a **Documentation Agent** (`model: "claude-sonnet-4-6"`) to update the PR body with a detailed human-readable report. This runs before `/pr-review-cycle` so reviewers have full context when they open the PR.
 
 ### Documentation Agent instructions
 

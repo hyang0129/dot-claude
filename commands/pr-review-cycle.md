@@ -1,4 +1,4 @@
-# PR Review-Fix Loop
+# PR Review Cycle
 
 ## Setup
 
@@ -21,7 +21,7 @@ fi
 ```
 
 If `GIT_ROOT` is still empty, stop and tell the user:
-"Could not find a git repository. Make sure you are inside a repo or pass the repo path as the first argument: `/review-fix <repo-path> [branch] [cycles]`"
+"Could not find a git repository. Make sure you are inside a repo or pass the repo path as the first argument: `/pr-review-cycle <repo-path> [branch] [cycles]`"
 
 If a repo path is passed as an argument (a path starting with `/` or `~`), use it directly as `GIT_ROOT` and shift the remaining arguments for branch/cycles parsing.
 
@@ -45,18 +45,18 @@ They are gitignored via `.git/info/exclude` and are never committed or pushed.
 
 ### Parse arguments
 
-Format is: `/review-fix [repo-path] [branch] [cycles]`
+Format is: `/pr-review-cycle [repo-path] [branch] [cycles]`
 - `repo-path`: optional absolute path to the repo root (starting with `/` or `~`). Use this when the working directory is not inside the repo (e.g. `/workspaces/hub_6` when the repo is at `~/repos/video_agent_long`). If provided, set `GIT_ROOT` to this path.
 - `branch`: optional branch name. If omitted, use: `git -C "$GIT_ROOT" branch --show-current` (only after `GIT_ROOT` is confirmed non-empty)
 - `cycles`: optional integer, default `2`. Must be ≥ 1.
 
 Examples:
-- `/review-fix` → current branch, 2 cycles
-- `/review-fix ~/repos/video_agent_long` → that repo, current branch, 2 cycles
-- `/review-fix feature/xyz` → that branch, 2 cycles
-- `/review-fix feature/xyz 3` → that branch, 3 cycles
-- `/review-fix 3` → if the first argument is a plain integer, treat it as cycles on the current branch
-- `/review-fix ~/repos/video_agent_long feature/xyz 3` → that repo, that branch, 3 cycles
+- `/pr-review-cycle` → current branch, 2 cycles
+- `/pr-review-cycle ~/repos/video_agent_long` → that repo, current branch, 2 cycles
+- `/pr-review-cycle feature/xyz` → that branch, 2 cycles
+- `/pr-review-cycle feature/xyz 3` → that branch, 3 cycles
+- `/pr-review-cycle 3` → if the first argument is a plain integer, treat it as cycles on the current branch
+- `/pr-review-cycle ~/repos/video_agent_long feature/xyz 3` → that repo, that branch, 3 cycles
 
 This means the Reviewer runs `cycles + 1` times total: once before each fix cycle, plus a final read-only review at the end. The last review never triggers fixes.
 
@@ -64,7 +64,7 @@ Find the associated PR:
 ```
 gh pr list --head <branch> --json number,title,url,state --limit 1
 ```
-If no PR is found, stop and tell the user: "No open PR found for branch `<branch>`. Create one first or pass a branch name explicitly: `/review-fix <branch>`"
+If no PR is found, stop and tell the user: "No open PR found for branch `<branch>`. Create one first or pass a branch name explicitly: `/pr-review-cycle <branch>`"
 
 Fetch full PR context:
 ```
@@ -358,8 +358,8 @@ Rules:
 - Only commit if there are staged changes (`git diff --cached --quiet` exits non-zero).
 - Use `git add -u` (tracked files only), never `git add -A` — artifact files live in
   `.claude-work/` and must not be committed.
-- This ensures nothing is left uncommitted/unpushed before handing off to `/rebase`.
-- If the push fails, report the error to the user and do NOT proceed to `/rebase`.
+- This ensures nothing is left uncommitted/unpushed before handing off to `/pr-finalize`.
+- If the push fails, report the error to the user and do NOT proceed to `/pr-finalize`.
 
 ---
 
@@ -424,7 +424,7 @@ Finding IDs use the format `F-<cycle>-<number>` (e.g. `F-1-3` = cycle 1, finding
 
 After presenting the Human Review Summary in the conversation, post a summarized version
 to the PR as a comment. This comment serves as the authoritative record of the review-fix
-run and is what `/rebase` reads during its pre-flight — it does not rely on local artifact
+run and is what `/pr-finalize` reads during its pre-flight — it does not rely on local artifact
 files being present.
 
 Compose the summary from `.claude-work/REVIEW_FINDINGS_FINAL.md` and `.claude-work/INTENT_VALIDATION.md`:
@@ -469,8 +469,8 @@ EOF
 ```
 
 Rules:
-- The `<!-- review-fix-summary -->` and `<!-- review-fix-summary-end -->` HTML comment tags are required — `/rebase` uses them to locate this comment via `gh pr view`.
-- Post this comment even if the final review is clean — `/rebase` needs the sentinel to confirm `/review-fix` ran.
+- The `<!-- review-fix-summary -->` and `<!-- review-fix-summary-end -->` HTML comment tags are required — `/pr-finalize` uses them to locate this comment via `gh pr view`.
+- Post this comment even if the final review is clean — `/pr-finalize` needs the sentinel to confirm `/pr-review-cycle` ran.
 - Do not truncate the intent validation section — paste it in full.
 - If `.claude-work/INTENT_VALIDATION.md` does not exist, write "Intent validation: not run."
 

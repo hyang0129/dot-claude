@@ -1,10 +1,10 @@
-# Rebase
+# PR Finalize
 
 ## Purpose
 
-Prepare a `fix-issue` PR branch for merge after `/review-fix` has completed.
+Prepare a `fix-issue` PR branch for merge after `/pr-review-cycle` has completed.
 
-Run this **after** `/review-fix`. It drives three specialized agents and terminates in exactly one of two states:
+Run this **after** `/pr-review-cycle`. It drives three specialized agents and terminates in exactly one of two states:
 
 - **READY** — rebased cleanly, intent preserved, CI passing, force-pushed, PR updated
 - **BLOCKER** — something requires human intervention; no further automated changes are made
@@ -58,7 +58,7 @@ Format is: `/rebase [branch] [base-branch]`
 - `base-branch`: optional. If omitted, read from PR metadata; default to `main`.
 
 Examples:
-- `/rebase` → current branch, base from PR
+- `/pr-finalize` → current branch, base from PR
 - `/rebase fix/issue-42-foo` → that branch, base from PR
 - `/rebase fix/issue-42-foo develop` → force base to develop
 
@@ -137,9 +137,9 @@ Git Operator
 
 ## Step 1 — Pre-flight (Git Operator)
 
-### Check `/review-fix` completeness
+### Check `/pr-review-cycle` completeness
 
-Locate the review-fix summary posted to the PR by `/review-fix`. It is identified by the
+Locate the review-fix summary posted to the PR by `/pr-review-cycle`. It is identified by the
 `<!-- review-fix-summary -->` sentinel in a PR comment body.
 
 ```bash
@@ -150,8 +150,8 @@ gh pr view <PR_NUMBER> --json comments --jq '
 ```
 
 **If no matching comment is found:**
-Warn the user — "No `/review-fix` summary found on PR #<PR_NUMBER>. Consider running
-`/review-fix` before rebasing. Continue anyway? [yes/no]"
+Warn the user — "No `/pr-review-cycle` summary found on PR #<PR_NUMBER>. Consider running
+`/pr-review-cycle` before rebasing. Continue anyway? [yes/no]"
 Wait for user reply. If no, stop.
 
 **If the comment is found**, parse it for the following signals:
@@ -714,7 +714,7 @@ Note: test files were not modified. This regression requires human investigation
 ---
 
 Branch is at: <current SHA — safe to inspect>
-To continue: resolve the blocker manually, then re-run `/rebase`.
+To continue: resolve the blocker manually, then re-run `/pr-finalize`.
 EOF
 )"
 ```
@@ -730,7 +730,7 @@ Reason: <unresolvable conflict | intent risk | CI regression>
 Details:
 <paste the relevant section from the blocker comment above>
 
-Action required: resolve manually, then re-run `/rebase`.
+Action required: resolve manually, then re-run `/pr-finalize`.
 ```
 
 ---
