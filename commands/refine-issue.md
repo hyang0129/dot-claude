@@ -177,7 +177,20 @@ attempt to summarize or restate the issue back to the user — start asking.
    - Is there a deadline, a downstream dependency, or a user complaint that drove this?
 
 **Conversation rules:**
-- Ask one or two focused questions per round — not a numbered list of ten.
+- **Ask all relevant questions per round** — do not artificially limit to one or two. Group
+  questions by dimension so the user can answer them in one pass. It is better to ask six
+  related questions at once than to make the user wait through six separate rounds.
+- **Bundle conditional follow-ups into the same message.** If the answer to one question
+  determines what the next question should be, ask both together:
+  ```
+  Will this need to work offline? If yes — should it queue and replay when reconnected,
+  or silently skip until back online?
+  ```
+  Do not wait for the answer to the first half before asking the second half when the
+  branching is simple and obvious.
+- **Before moving to the next round, verify that the user actually answered what you asked.**
+  If they skipped a question or gave an incomplete answer, re-ask the missing part explicitly
+  before continuing. Do not silently drop unanswered questions.
 - **Before asking the user any question that the codebase could answer** (e.g. "does X already
   exist?", "where does this behavior happen?", "is Y currently wired?"), spawn a quick Explore
   subagent to look it up first. Then present the finding inline instead of asking:
@@ -188,8 +201,8 @@ attempt to summarize or restate the issue back to the user — start asking.
   ```
   Only fall back to asking the user directly if the search is inconclusive. Questions about
   intent, priority, and lived experience always go to the user — code cannot answer those.
-- When the user answers, synthesize what you've learned before asking the next question.
-  Show them you understood, then probe the next gap.
+- When the user answers, synthesize what you've learned before asking the next round.
+  Show them you understood, then probe the remaining gaps.
 - If an answer opens a new dimension you hadn't considered, follow it.
 - Do not declare understanding complete until you can articulate:
   - The job statement (when / want / so I can) with a real-world outcome
