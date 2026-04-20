@@ -180,6 +180,28 @@ In both modes, `WORK_DIR` is the directory agents and all subsequent `git` comma
 
 All Planner codebase research happens from this branch (= latest `origin/<BASE>`), never from whatever branch was active before.
 
+### Open draft PR
+
+Open a draft PR immediately so the URL is available for all subsequent status posts:
+
+```bash
+git push -u origin fix/issue-<number>-<slug>
+gh pr create --repo <owner/repo> \
+  --base <BASE> \
+  --draft \
+  --title "fix(#<number>): <title>" \
+  --body "$(cat <<'EOF'
+Closes #<number>
+
+*Work in progress — implementation has not started yet.*
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)"
+```
+
+Capture the PR URL returned by `gh pr create` and store it as `PR_URL`. Also capture the PR number and store it as `PR_NUMBER`. Use both in all subsequent issue comments and user-facing messages.
+
 ---
 
 ## Handling User Interjections (Scope Creep)
@@ -342,6 +364,8 @@ After the Planner finishes, read `.claude-work/ISSUE_<number>_PLAN.md`.
 gh issue comment <number> --repo <owner/repo> --body "$(cat <<'EOF'
 ## Pre-implementation check
 
+Draft PR: <PR_URL>
+
 [If Open Questions section is non-empty:]
 The following decisions need to be resolved before implementation begins:
 
@@ -488,18 +512,32 @@ Do not:
   - Refactor code unrelated to this task
 ```
 
+### Commit helper
+
+After each wave or integration step passes binary checks, commit the changes:
+```bash
+git add <files changed in this wave — never git add -A>
+git commit -m "$(cat <<'EOF'
+fix(#<number>): <what this wave/step did>
+
+Co-Authored-By: Claude Code <noreply@anthropic.com>
+EOF
+)"
+```
+
 ### Tier 1 — single Coder, then Reviewer
 
 Spawn agents sequentially:
 ```
-Coder → [binary checks] → Reviewer
+Coder → [binary checks] → commit → Reviewer
 ```
 
 ### Tier 2 — parallel Coders + Tester, then Integrator
 
 Spawn Wave 1 agents in parallel. Wait for all to finish.
 Run binary checks (compile, lint, typecheck, tests).
-If checks pass, spawn Integrator. After integration, spawn Reviewer.
+If checks pass, **commit Wave 1 changes**, then spawn Integrator.
+After integration passes checks, **commit integration changes**, then spawn Reviewer.
 
 ### Tier 3 — task queue with waves
 
@@ -507,8 +545,9 @@ For each wave in order:
 1. Spawn all agents in the wave in parallel.
 2. Wait for all to finish.
 3. Run binary checks. If checks fail, stop: re-assign failing files to the same agent with the error as context (max 1 retry). If still failing, stop and report to user.
-4. Only advance to the next wave after all checks pass.
-After all waves: Integrator, then Reviewers in parallel (correctness / security / performance — one lens per invocation).
+4. When checks pass, **commit that wave's changes** before advancing.
+5. Only advance to the next wave after the commit succeeds.
+After all waves: Integrator (commit after integration passes checks), then Reviewers in parallel (correctness / security / performance — one lens per invocation).
 
 ---
 
@@ -559,23 +598,78 @@ Role: read-only. Do NOT make any file changes.
 5. Output `.claude-work/ISSUE_<number>_REVIEW.md`.
 
 After the Reviewer finishes:
-- **Critical or major findings**: apply targeted fixes, re-run binary checks, then re-run Reviewer (max 2 review iterations).
-- **Minor findings only**: apply at discretion; do not re-run Reviewer.
+- **Critical or major findings**: apply targeted fixes, re-run binary checks, **commit the fixes**, then re-run Reviewer (max 2 review iterations).
+- **Minor findings only**: apply at discretion, commit if any changes were made; do not re-run Reviewer.
 - If after 2 review iterations critical/major findings remain, include them in the PR description as known outstanding items.
 
 ---
 
-## Step 6 — Commit and Open PR
+## Step 5b — E2E QA (Playwright repos only)
 
-Commit all changes:
+First, resolve the E2E directory. Playwright infrastructure may live outside the repo working tree (e.g. in a dev container mount). Check in order:
+
 ```bash
-git add <only the files changed for this issue — never git add -A>
+# 1. Does a known container E2E root exist?
+ls "D:/containers/claude-rts" 2>/dev/null && echo "FOUND" || echo "NOT_FOUND"
+```
+
+- If `D:/containers/claude-rts` exists → set `E2E_DIR="D:/containers/claude-rts"`.
+- Otherwise → set `E2E_DIR="$WORK_DIR"`.
+
+Then detect whether `E2E_DIR` has Playwright infrastructure:
+
+```bash
+# 1. Playwright dependency present?
+grep -rl '"@playwright/test"' "$E2E_DIR/package.json" "$E2E_DIR/package-lock.json" \
+  "$E2E_DIR/yarn.lock" "$E2E_DIR/pnpm-lock.yaml" 2>/dev/null | head -1
+
+# 2. Playwright config present?
+ls "$E2E_DIR"/playwright.config.* 2>/dev/null
+
+# 3. Existing E2E test files?
+find "$E2E_DIR" -type f \( -name "*.spec.ts" -o -name "*.spec.js" -o -name "*.e2e.ts" -o -name "*.e2e.js" \) \
+  -not -path "*/node_modules/*" 2>/dev/null | head -5
+```
+
+**Skip the rest of this step** if any of the three checks come up empty — the repo has no Playwright E2E capability.
+
+If all three checks pass, push the current commits and run E2E QA:
+
+```bash
+git push
+```
+
+```
+/e2e-qa <PR_NUMBER>
+```
+
+Wait for `/e2e-qa` to complete. Its Reporter posts a summary comment to the PR automatically.
+
+**Gate on verdict:**
+- `VERDICT=PASS` → proceed to Step 6.
+- `VERDICT=FAIL` → **do not mark the PR ready.** Stop and report to the user:
+  ```
+  E2E QA failed for PR #<PR_NUMBER>. Fix the failing tests or app bugs reported by /e2e-qa,
+  then re-run Step 5b before proceeding.
+  PR: <PR_URL>
+  ```
+  Do not call `gh pr ready` until `/e2e-qa` returns `PASS`.
+
+---
+
+## Step 6 — Push and Mark PR Ready
+
+All implementation changes were committed incrementally after each step. Verify no uncommitted changes remain:
+```bash
+git status --short
+```
+If any changes are uncommitted (e.g. a last-minute fix), commit them now before pushing:
+```bash
+git add <specific files>
 git commit -m "$(cat <<'EOF'
-fix(#<number>): <concise description of what was done>
+fix(#<number>): <describe the remaining changes>
 
 Closes #<number>
-
-[one-line summary of each logical change if multiple areas touched]
 
 Co-Authored-By: Claude Code <noreply@anthropic.com>
 EOF
@@ -587,12 +681,12 @@ Verify PR checklist before pushing:
 - [ ] All acceptance criteria from the plan are met
 - [ ] Reviewer findings addressed or documented
 - [ ] Only files in-scope for this issue were modified (`git diff <BASE>...HEAD --name-only`)
+- [ ] E2E QA passed (`/e2e-qa` verdict PASS), or repo has no Playwright infrastructure
 
-Push and open PR:
+Push commits and update the draft PR body, then mark it ready for review:
 ```bash
-git push -u origin fix/issue-<number>-<slug>
-gh pr create --repo <owner/repo> \
-  --base <BASE> \
+git push
+gh pr edit <PR_NUMBER> --repo <owner/repo> \
   --title "fix(#<number>): <title>" \
   --body "$(cat <<'EOF'
 Closes #<number>
@@ -613,6 +707,7 @@ Tier <N> — [Planner → Coder → Reviewer | parallel Coders + Integrator | DA
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
+gh pr ready <PR_NUMBER> --repo <owner/repo>
 ```
 
 ---
