@@ -28,3 +28,10 @@ Desktop.ini
 # Memory (per-machine, not portable)
 memory/
 MEMORY.md
+
+# Cache-miss investigation outputs (contain transcript excerpts)
+tools/cache-miss/results/
+
+# Python bytecode
+__pycache__/
+*.pyc
