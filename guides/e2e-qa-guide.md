@@ -2,275 +2,252 @@
 
 ## Overview
 
-This guide defines how to run an automated E2E QA pipeline after a feature is implemented.
-It uses a sequential chain of specialized subagents: **Designer**, **Implementer**, **Runner**,
-and **Fixer**. The Runner and Fixer phases loop until tests pass or a max iteration is reached.
+Playwright-first automated QA for feature PRs. A five-phase pipeline (Designer → Implementer → Runner ↔ Fixer → Reporter) generates and runs E2E tests, then records residual human QA as a GitHub issue.
 
-Run this workflow **after** `/fix-issue` or `/resolve-issue` produces a PR, and **before**
-merging. It catches integration bugs that unit tests miss — especially frontend/backend wiring,
-DOM interactions, and state management across page reloads.
+Orchestrated by `/e2e-qa`. Runs after `/resolve-issue` and before merge.
 
 ---
 
-## When to Use
+## Premise & honest scope
 
-- New user-facing feature with frontend + backend components
-- Feature adds new card types, widgets, or UI flows
+**What this captures:** regression-class bugs — frontend↔backend wiring, DOM events triggering API calls, rendering of API responses, cross-component side effects, state persistence. Realistically 60–75% of QA surface.
+
+**What this does NOT capture:** happy-path UX feel, cross-browser quirks, animation jank, focus order / a11y, perf on slow networks, copy review, visual polish. These are tracked as **residual debt** on a GitHub issue and paid by a human on a scheduled cadence — never eliminated, only deferred and batched.
+
+This workflow is net-positive only if debt is bounded. See **Debt ledger** below.
+
+---
+
+## When to use
+
+- New user-facing feature with frontend + backend integration
+- Feature adds card types, widgets, or UI flows
 - Feature modifies existing E2E-covered behavior (regression risk)
-- Complex API + UI integration that unit tests can't fully exercise
 
-**Skip when:** the change is backend-only with no UI, or is purely config/docs.
-
----
-
-## Phase Overview
-
-```
-Designer ──► Implementer ──► Runner ──► Fixer ──┐
-                                ▲                │
-                                └────────────────┘
-                                  (loop until green
-                                   or max 3 rounds)
-                              ──► Runner (final)
-```
-
-All agents run on Opus. Each phase is a separate subagent with a fresh context window.
+**Skip when:** backend-only with no UI, or purely config/docs.
 
 ---
 
 ## Phase 1 — Designer (read-only)
 
-**Role:** Design E2E test scenarios based on what was built.
+**Role:** design Playwright scenarios from the PR diff + acceptance criteria.
 
 **Input:**
-- Issue number / description of what was implemented
-- Branch name
+- `gh pr diff <pr>` — the actual change (not the description)
+- Acceptance criteria from the linked issue (`gh issue view <n>`)
+- Existing Playwright tests (patterns, fixtures, page objects)
+- Existing unit tests (to avoid duplication)
 
-**Instructions for the agent:**
-1. Read `CLAUDE.md` for project conventions
-2. Read existing E2E tests to understand patterns, fixtures, and infrastructure
-3. Read new unit tests to understand what's already covered
-4. Read the source files that changed (server endpoints, frontend code, config)
-5. Design scenarios that exercise **frontend-backend integration** — not duplicating unit tests
+Diff alone is dangerous: it describes *what shipped*, not *what was asked for*. If the diff has a bug, diff-only tests assert the bug as correct. Always pair with spec.
 
-**Output:** `.claude-work/E2E_<FEATURE>_PLAN.md`
+**Output:** `.claude-work/E2E_<feature>_PLAN.md`
 
 ```markdown
 # E2E Test Plan: <feature>
 
-## Test Infrastructure Notes
-<fixtures, mocks, test-mode endpoints needed>
+## PR Risk Tier: <high | medium | low>
+<one-line justification: high = auth/payments/data-loss/public-launch;
+ medium = user-facing feature no flag; low = behind flag, internal tool, or thin UI on backend change>
+
+## Infrastructure Notes
+<page objects, route stubs, test fixtures needed>
 
 ## Scenarios
 
 ### S1: <name>
+- **Priority**: critical | high | medium | low
+- **Why not a unit test**: <must be justified — if unit test could cover it, cut the scenario>
+- **Playwright feature**: route-stub | real-backend | visual-snapshot | a11y-scan
 - **Setup**: <preconditions>
-- **Steps**: <numbered user actions>
-- **Expected**: <observable outcomes to assert>
-- **Priority**: critical / high / medium / low
+- **Steps**: <numbered user actions, in terms of roles/labels not selectors>
+- **Expected**: <observable outcomes>
 ```
 
-**Key principles:**
-- One scenario per distinct user flow, not per feature
-- Focus on what unit tests **cannot** cover: DOM events triggering API calls, API responses
-  rendering correctly, cross-component side effects, canvas persistence
-- Prioritise: critical (core flow broken = feature is useless) > high (important but workaround
-  exists) > medium (edge case) > low (cosmetic)
+**Rules:**
+- One scenario per distinct user flow, not per code change.
+- Every scenario must have a `why-not-unit` justification. No justification → cut it.
+- Risk tier classifies the PR as a whole, not individual scenarios.
 
 ---
 
 ## Phase 2 — Implementer
 
-**Role:** Write the E2E test code and any supporting infrastructure.
+**Role:** write Playwright test code.
 
-**Input:**
-- The test plan from Phase 1
-- Branch name
+**Hard rules (not negotiable):**
+- Selectors: `getByRole`, `getByLabel`, `getByTestId` only. No CSS class or XPath selectors.
+- Waits: Playwright auto-waits. No `waitForTimeout`. Use `expect(...).toBeVisible()` etc.
+- Network: `page.route()` for stubs. Prefer over browser-side mocking.
+- Reuse: page objects / fixtures must come from existing files when available. No per-test helper duplication.
+- Visual / a11y: if plan specifies `visual-snapshot` use `toHaveScreenshot()`; if `a11y-scan` use `@axe-core/playwright`.
+- Lint/format after writing. Do NOT run tests — that's Phase 3.
 
-**Instructions for the agent:**
-1. Read the test plan
-2. Read existing E2E test files to match patterns exactly (fixtures, conftest, assertions)
-3. Implement all critical and high priority scenarios; include medium/low if straightforward
-4. If tests need server-side support (e.g. test puppeting endpoints to inject mock data):
-   - Add them guarded by `CLAUDE_RTS_TEST_MODE` (or project-equivalent test mode flag)
-   - Follow existing test endpoint patterns
-5. If a dev preset is needed, create it under the appropriate directory
-6. Run linter/formatter — do NOT run the tests
+**Budget:** if the plan exceeds a reasonable scenario count (≥ 10 new tests), flag to the user before implementing — may indicate the feature is too large or the plan duplicates unit coverage.
 
-**Output:**
-- Test file(s) in the project's E2E test directory
-- Any test infrastructure changes (test endpoints, dev presets, fixtures)
-
-**Constraints:**
-- Match existing test patterns exactly — don't invent new conventions
-- Test puppeting endpoints must be gated behind test mode — never exposed in production
+**Test-mode endpoints:** if a scenario genuinely needs server-side puppeting, gate it behind the project's test-mode flag. Never expose in production. Prefer `page.route()` stubbing when feasible.
 
 ---
 
 ## Phase 3 — Runner (repeatable)
 
-**Role:** Execute E2E tests, diagnose failures, produce a bug report.
+**Role:** run tests, distinguish bugs from flakes, diagnose root causes.
 
-**Input:**
-- Path to E2E test file(s)
-- Branch name
-- Round number (R1, R2, R3, ...)
-
-**Instructions for the agent:**
-1. Kill any running server instances (follow project's server rule)
-2. Run unit tests first to verify baseline is clean
-3. Run E2E tests
-4. For each failure:
-   - Read the error message and traceback
-   - Read the relevant source code to understand the root cause
-   - Classify as **app-bug** (source code wrong) or **test-bug** (test code wrong)
-   - Determine severity: critical / high / medium
+**Steps:**
+1. Kill any running server/dev instances per project convention.
+2. Run unit tests first — baseline must be green.
+3. Run Playwright tests, capturing traces on failure.
+4. For each failing test, **re-run it 3× in isolation**:
+   - 3/3 fail deterministically → real bug. Read source, diagnose.
+   - Intermittent → `flake-quarantine`. Do NOT report as a bug. Do NOT let Fixer touch it.
+5. For real bugs: read the source, classify `app-bug` vs `test-bug`, identify root cause. One root cause can cascade across many tests — report the cause, not each symptom.
 
 **Output:** `.claude-work/E2E_BUG_REPORT_R<N>.md`
 
 ```markdown
 # E2E Bug Report — Round <N>
 
-## Test Results Summary
+## Results
 - Passed: N
-- Failed: N
-- Errors: N
+- Failed: N  (deterministic: N, quarantined flakes: N)
 
-## Bugs Found
+## Bugs
 
 ### BUG-R<N>-1: <title>
-- **Test**: <test class/method>
+- **Tests affected**: <test names>
 - **Type**: app-bug | test-bug
-- **Error**: <brief error message>
-- **Root cause**: <analysis after reading source>
-- **Fix**: <what needs to change and where>
 - **Severity**: critical | high | medium
-```
+- **Root cause**: <analysis from reading source>
+- **Fix**: <what changes where>
+- **Trace**: <path to trace.zip>
 
-**Key principles:**
-- Don't just report errors — **diagnose root causes** by reading source code
-- A single root cause can cascade across many tests (especially with module-scoped fixtures);
-  identify the root cause, don't list each test separately
-- Distinguish app bugs (ship-blocking) from test bugs (test code needs fixing)
+## Quarantined Flakes
+- <test name> — <observed failure> — reran 3×, passed N/3. Not fixed this round.
+```
 
 ---
 
 ## Phase 4 — Fixer
 
-**Role:** Apply fixes from the bug report.
-
-**Input:**
-- Bug report from Phase 3
-- Branch name
-
-**Instructions for the agent:**
-1. Read the bug report
-2. Read the relevant source files before making changes
-3. Fix all bugs (both app-bugs and test-bugs)
-4. Run linter/formatter on modified files
-5. Run unit tests to verify nothing broke
-6. Do NOT run E2E tests — that's the Runner's job
-
-**Constraints:**
-- Fix only what the bug report identifies — don't refactor or improve unrelated code
-- For app-bugs: make the minimal fix. If the fix is non-trivial, explain the approach
-  in the bug report update
-- For test-bugs: fix the test to correctly exercise the behavior, don't weaken assertions
-
----
-
-## Loop Protocol
-
-```
-Round 1: Runner → Fixer
-Round 2: Runner → Fixer (if needed)
-Round 3: Runner (final — report only, no more fixes)
-```
+**Role:** apply fixes with separation of concerns.
 
 **Rules:**
-- Max 3 rounds. If tests still fail after round 3, report outstanding issues to the user
-  for manual triage
-- After each Fixer phase, the next Runner phase starts fresh (new context, re-reads everything)
-- If a round finds 0 bugs, skip remaining rounds and report success
-- Track cumulative bug counts across rounds for the final report
+- Fix `app-bug` and `test-bug` entries. Leave `flake-quarantine` alone.
+- **Separate commits.** `fix(app): ...` and `fix(test): ...` — never combined. This makes it possible to revert a bad "fix" without losing the other category.
+- Minimal changes only. No refactoring, no "while I'm here" cleanup. Edit budget enforced by orchestrator.
+- Do not weaken test assertions to pass. If a test assertion is wrong, the Runner should have classified it as `test-bug` with a root cause — fix that, don't relax it.
+- Run lint + unit tests. Do NOT run Playwright — Runner owns that.
 
 ---
 
-## Final Report
+## Loop protocol
 
-After the last Runner phase completes, the orchestrator presents:
+- Max 3 rounds by default.
+- If a round finds 0 bugs, exit loop early.
+- Final round is **report-only** — no Fixer invocation.
+- After 3 rounds with remaining bugs: final report surfaces them for human triage. The PR is not blocked automatically — the human decides.
+
+---
+
+## Phase 5 — Reporter & debt ledger
+
+**Role:** post PR summary, file debt issue, check thresholds.
+
+### 5a. PR summary comment
 
 ```markdown
-## E2E QA Complete: <feature>
+## E2E QA: <PASS | FAIL>
 
-| Round | Passed | Failed | App Bugs | Test Bugs |
-|-------|--------|--------|----------|-----------|
-| R1    | N/14   | N      | N        | N         |
-| R2    | N/14   | N      | N        | N         |
-| R3    | N/14   | N      | N        | N         |
+| Round | Passed | Failed | App Bugs | Test Bugs | Flakes |
+|-------|--------|--------|----------|-----------|--------|
+| R1    | N/M    | N      | N        | N         | N      |
+| R2    | ...    |        |          |           |        |
 
-### App Bugs Found & Fixed
-- <bug title> — <one-line description of fix>
+**App bugs fixed:** <list>
+**Test bugs fixed:** <list>
+**Quarantined flakes:** <list — need human triage>
+**Outstanding:** <any bugs remaining after max rounds>
 
-### Test Bugs Found & Fixed
-- <bug title> — <one-line description of fix>
-
-### Outstanding Issues
-<any remaining failures after max rounds>
-
-### Verdict: PASS | FAIL
+Residual human-QA debt tracked: <issue url>
 ```
+
+### 5b. Debt issue
+
+Ensure label exists:
+```bash
+gh label create qa-debt --color FBCA04 \
+  --description "Residual human QA owed for a merged auto-QA PR" 2>/dev/null || true
+```
+
+Create the issue:
+```bash
+gh issue create --label qa-debt --title "qa-debt: PR #<n> — <feature>" --body "$(cat <<'EOF'
+**PR:** #<n> — <link>
+**Merged:** <date, or "pending merge">
+**Risk tier:** <tier>
+
+## Auto-covered
+<short bullet list of regression areas exercised by Playwright>
+
+## Residual human-QA checklist
+- [ ] Happy-path walkthrough in dev against real backend
+- [ ] Cross-browser smoke (Safari, Firefox) for any user-visible UI changes
+- [ ] Keyboard-only navigation / a11y for new interactive elements
+- [ ] Perf on throttled network for pages that load new data
+- [ ] Copy / UX review for any new user-facing strings
+- [ ] <any scenario-specific residual items — e.g. "visual check of animation">
+
+## Payment rules
+- High-risk: clear BEFORE merge.
+- Medium-risk: clear before next release cut.
+- Low-risk (flag-gated): clear before flag flip to 100%.
+EOF
+)"
+```
+
+### 5c. Threshold alarm
+
+```bash
+gh issue list --label qa-debt --state open --json number,createdAt
+```
+
+Alarm if:
+- Open count ≥ 10, OR
+- Oldest open issue > 14 days
+
+On alarm: print a THRESHOLD ALARM in the final summary. The orchestrator tells the user to pay down debt before running `/e2e-qa` again.
 
 ---
 
-## Orchestration Checklist
+## Debt payment workflow
 
-For the orchestrator (the top-level agent coordinating the pipeline):
+Four triggers. Use all of them.
 
-- [ ] Feature PR exists and unit tests pass before starting
-- [ ] Phase 1 (Designer) completed — test plan reviewed
-- [ ] Phase 2 (Implementer) completed — test code written, lint clean
-- [ ] Phase 3+4 loop executed (max 3 rounds)
-- [ ] Final report presented to user
-- [ ] All app-bug fixes committed to the feature branch
-- [ ] Existing E2E / smoke tests still pass (regression check in final round)
-- [ ] Full unit test suite still passes
+1. **Risk gate at merge time.** `high` risk PRs: human runs the checklist before merge. `medium`/`low`: merge, accumulate.
+2. **Release-cut drain.** Before any user-facing deploy: all open `qa-debt` issues touching shipped code must be closed (checklist complete).
+3. **Threshold alarm.** ≥ 10 open or oldest > 14 days: block new `/e2e-qa` runs until the backlog shrinks.
+4. **Flag-flip gate.** For low-risk flag-gated PRs: debt must clear before flag flips to 100% rollout.
+
+Humans close the issue by checking off the list and commenting with findings (or filing a follow-up bug if the checklist surfaces problems).
 
 ---
 
-## Integration with Other Workflows
-
-This QA workflow slots into the broader issue resolution pipeline:
+## Integration with other workflows
 
 ```
-/refine-issue  →  /resolve-issue  →  E2E QA pipeline  →  merge
-                   (fix + review      (this guide)
-                    + rebase)
+/refine-issue → /resolve-issue → /e2e-qa → merge
+                                   ↓
+                                 qa-debt issue
+                                   ↓
+                         paid at release / flag flip / alarm
 ```
-
-- Run E2E QA **after** `/resolve-issue` produces a clean PR
-- If E2E QA finds app bugs, fixes are committed to the same branch/PR
-- After E2E QA passes, the PR is ready for human review and merge
 
 ---
 
 ## Tips
 
-- **Module-scoped fixtures cause cascade failures.** If one test modifies shared state (e.g.
-  removes a card), all subsequent tests in the module are affected. The Designer should note
-  this risk; the Implementer should add cleanup helpers.
-
-- **Viewport and layout matter.** UI elements that overflow the viewport, get overlapped by
-  other cards, or render off-screen will cause Playwright actionability failures. Tests should
-  clean up spawned cards and use coordinates that leave room for menus/dialogs.
-
-- **CSS selector normalization.** Browsers normalize inline styles (e.g. `z-index:100` becomes
-  `z-index: 100` with a space). Use normalized forms in selectors.
-
-- **Test puppeting > mocking.** Prefer server-side test endpoints that inject mock data over
-  monkey-patching or stubbing in the browser. Test endpoints exercise the real server code path;
-  stubs skip it.
-
-- **Don't duplicate unit test coverage.** E2E tests should exercise integration paths. If a
-  unit test already verifies that an API parses JSON correctly, the E2E test doesn't need to
-  re-test that — it tests that the UI calls the API and renders the result.
+- **Diffs lie, specs don't.** Designer must read both. Diff shows what shipped; spec shows what was asked for. Disagreement = bug, not test material.
+- **Cascade failures.** One root cause often breaks many tests. Report the cause once, not per symptom.
+- **Quarantine > fix-on-sight for flakes.** Fixing a flaky test by "making it more robust" usually means weakening assertions or adding sleeps. Quarantine, triage later with humans.
+- **Page objects > inline selectors.** If Implementer is writing raw selectors in test bodies, force a page-object refactor — brittleness compounds.
+- **Don't duplicate unit coverage.** If a unit test verifies JSON parsing, the E2E doesn't. The `why-not-unit` field in the plan is the filter.
+- **Test-mode endpoints are a last resort.** Prefer `page.route()` stubs. Real server code paths catch more bugs than mock injection points.

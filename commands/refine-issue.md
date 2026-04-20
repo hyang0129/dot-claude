@@ -2,15 +2,30 @@
 
 ## Purpose
 
-Converts a vague issue or one-line description into a behavioral spec that implementation agents
-cannot satisfy without also satisfying the user's real intent.
+Captures and locks the **intent** behind an issue — the real-world outcome the user wants, the
+hidden assumptions they didn't write down, and the failure modes they won't tolerate — so that
+an implementation agent can resolve every downstream decision (which entry points to touch,
+what "done" looks like, what's out of scope) by reference to that intent instead of re-asking
+the user.
+
+The refined spec is a consequence of this, not the goal. Acceptance scenarios, surface area
+tables, and falsifiability tests exist to project the captured intent onto the codebase so
+implementers cannot satisfy the letter of the spec while missing the point. If intent capture
+fails, nothing downstream can recover — a `check_fk()` that exists but is never called, a
+pipeline phase added to a legacy script but not to the CLI or server, a ticket closed with the
+user's actual experience unchanged — these are all symptoms of intent that was inferred from
+the issue body rather than validated with the author.
 
 The core failure this command prevents: implementations that technically close a ticket while
-leaving the user's actual experience unchanged — a `check_fk()` function that exists but is
-never called, a pipeline phase added to a legacy script but not to the CLI or orchestration server.
+executing against an intent that diverges from the user's actual one.
 
 **This command never writes source code and never opens PRs.**
-Its sole output is a refined spec document, optionally posted as a GitHub issue comment.
+Its outputs, in priority order:
+1. A validated intent summary (Job Statement, Behavioral Intent, Hidden Assumptions, Out of
+   Scope) — the source of truth the Spec agent and every downstream implementer reads first.
+2. A refined spec that projects that intent onto the codebase as falsifiable acceptance
+   scenarios and a concrete surface area table.
+3. Optionally, the spec posted to the GitHub issue (the approval surface).
 
 The refined spec is the intended input to `/resolve-issue` or `/fix-issue`.
 
