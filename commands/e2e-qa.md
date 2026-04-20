@@ -2,7 +2,7 @@
 
 Orchestrator only. Runs Playwright-first automated QA on a feature PR, logs residual human-QA debt as a GitHub issue, and gates merge on risk tier.
 
-**This command never reads source files, never runs Playwright, and never writes code.** It sequences five subagents (Designer → Implementer → Runner ↔ Fixer → Reporter) with fresh context windows, then records debt.
+**This command never reads source files, never runs Playwright, and never writes code.** It sequences seven subagents (QA Reviewer → QA Splitter → Designer → Implementer → Runner ↔ Fixer → Reporter) with fresh context windows, then records debt.
 
 ---
 
@@ -37,19 +37,125 @@ This trades per-PR human QA cost for **batched, scheduled** human QA — cheaper
 
 ---
 
+## Step 0a — QA Reviewer (Opus 4.6, read-only)
+
+Spawn an Agent subagent (`model: "claude-opus-4-6"`, tools: read-only). Append to its prompt:
+
+> **Role:** Act as an experienced human QA engineer reviewing this PR for the first time. Your job is to produce a comprehensive checklist of everything a thorough human QA pass would need to verify — functional, visual, experiential, and edge-case. Do not think about automation yet; think only about what a careful human would check.
+>
+> **Inputs to gather:**
+> - `gh pr diff <pr>` — full diff
+> - PR description and linked issue (`gh issue view <n>`)
+> - Any existing QA notes or acceptance criteria on the issue
+>
+> **For each area touched by the PR**, ask yourself: what could go wrong that a user would notice? Think across:
+> - Happy-path user flows (primary, alternate)
+> - Error states and edge inputs (empty, max, invalid)
+> - UI appearance and layout (spacing, truncation, responsiveness)
+> - Cross-browser / cross-device behavior
+> - Accessibility (keyboard nav, focus order, screen reader labels)
+> - Performance (slow network, large data sets)
+> - Data persistence and state consistency
+> - Security-relevant interactions (auth gates, permission checks)
+> - Copy and user-facing strings
+> - Integration points (does this feature interact correctly with adjacent features?)
+>
+> **Output:** Write `.claude-work/E2E_<feature>_QA_CHECKLIST.md`:
+>
+> ```markdown
+> # QA Checklist: <feature> — PR #<n>
+>
+> ## <Area 1: e.g. "Form submission flow">
+> - [ ] <specific thing to check>
+> - [ ] <specific thing to check>
+>
+> ## <Area 2: e.g. "Error handling">
+> - [ ] ...
+> ```
+>
+> Be specific and exhaustive. "Check that it works" is not a checklist item. "Verify that submitting with an empty email field shows the inline validation message and does not call the API" is a checklist item.
+>
+> Return:
+>
+> ```
+> HANDOFF
+> CHECKLIST_PATH=<absolute path>
+> PR_NUMBER=<int>
+> BRANCH=<branch>
+> REPO=<owner/repo>
+> CHECKLIST_ITEM_COUNT=<int>
+> END_HANDOFF
+> ```
+
+Wait for completion. Parse `HANDOFF`.
+
+---
+
+## Step 0b — QA Splitter (Opus 4.6, read-only)
+
+Spawn an Agent subagent (`model: "claude-opus-4-6"`, tools: read-only). Append to its prompt:
+
+> **Role:** Split the QA checklist at `CHECKLIST_PATH` into two buckets: items that can be fully verified by automated Playwright tests, and items that genuinely require a human. Apply strict criteria — do not put items in the automation bucket just because they *could* be scripted; only items where automation is *reliable and sufficient*.
+>
+> **Automation bucket — an item belongs here if ALL of:**
+> - It has deterministic, observable DOM outcomes (element visible, text matches, API called)
+> - It does not require visual/aesthetic judgment ("looks right", "feels smooth", "spacing is off")
+> - It does not require cross-browser manual verification beyond what headless Chromium covers
+> - It does not require physical device or assistive technology (screen reader, keyboard-only with human judgment)
+> - It does not require reading copy for tone, clarity, or correctness
+>
+> **Human-only bucket — an item belongs here if ANY of:**
+> - Requires aesthetic or UX judgment
+> - Requires cross-browser testing on real browsers (Safari, Firefox)
+> - Requires assistive technology or keyboard-only flow with human judgment
+> - Requires performance perception on real hardware/network
+> - Requires copy/content review
+> - Automation would only assert the current behavior, not whether the behavior is *correct from a user perspective*
+>
+> **Output:** Write `.claude-work/E2E_<feature>_QA_SPLIT.md`:
+>
+> ```markdown
+> # QA Split: <feature> — PR #<n>
+>
+> ## Auto-testable (Playwright)
+> - [ ] <checklist item> — *why automatable: <one-line reason>*
+>
+> ## Human-only (QA debt)
+> - [ ] <checklist item> — *why human: <one-line reason>*
+> ```
+>
+> Return:
+>
+> ```
+> HANDOFF
+> SPLIT_PATH=<absolute path>
+> AUTO_COUNT=<int>
+> HUMAN_COUNT=<int>
+> END_HANDOFF
+> ```
+
+Wait for completion. Parse `HANDOFF`.
+
+The `Human-only` section of `SPLIT_PATH` is the **authoritative QA debt checklist** for this PR. The Reporter (Step 4) will use it verbatim instead of a generic template.
+
+The `Auto-testable` section seeds the Designer (Step 1) alongside the diff and spec.
+
+---
+
 ## Step 1 — Designer (read-only subagent)
 
 Spawn an Agent subagent (`model: "claude-sonnet-4-6"`, tools: read-only). Append to its prompt:
 
-> **Role:** Design Playwright scenarios from the PR diff + acceptance criteria. Read-only — do not write or modify any files except the output plan.
+> **Role:** Design Playwright scenarios from the QA split + PR diff + acceptance criteria. Read-only — do not write or modify any files except the output plan.
 >
 > **Inputs to gather:**
+> - `SPLIT_PATH` (auto-testable items from the QA Splitter) — primary scenario seed
 > - `gh pr diff <pr>` — the actual change (not the description)
 > - Acceptance criteria from the linked issue (`gh issue view <n>`)
 > - Existing Playwright tests (patterns, fixtures, page objects)
 > - Existing unit tests (to avoid duplication)
 >
-> **Critical:** diff alone is dangerous — it describes *what shipped*, not *what was asked for*. If the diff has a bug, diff-only tests assert the bug as correct. Always pair diff with spec. Disagreement between diff and spec = bug, not test material.
+> **Critical:** the auto-testable items from the QA split are your primary input — design one scenario per item. Do not invent scenarios beyond the split. Diff alone is dangerous — it describes *what shipped*, not *what was asked for*. If the diff has a bug, diff-only tests assert the bug as correct. Always pair diff with spec. Disagreement between diff and spec = bug, not test material.
 >
 > **Output:** Write `.claude-work/E2E_<feature>_PLAN.md` with this structure:
 >
@@ -93,7 +199,7 @@ Spawn an Agent subagent (`model: "claude-sonnet-4-6"`, tools: read-only). Append
 > END_HANDOFF
 > ```
 
-Wait for completion. Parse `HANDOFF`.
+Wait for completion. Parse `HANDOFF`. Carry `SPLIT_PATH` forward from Step 0b.
 
 **Gate**: if `--risk` was passed, override `RISK_TIER`. If `RISK_TIER=high`, warn the user: "High-risk PR — human QA should run *before* merge. Auto-QA runs anyway but does not discharge QA obligation." Continue.
 
@@ -217,7 +323,9 @@ Wait. Continue to round `n+1`.
 
 Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 
-> **Role:** Post PR summary, file debt issue, check thresholds.
+> **Role:** Post PR summary, update consolidated debt issue, check thresholds.
+>
+> **Inputs:** `PR_NUMBER`, `REPO`, `RISK_TIER`, `SPLIT_PATH`, all round report paths.
 >
 > **5a. Post PR summary comment** via `gh pr comment <PR_NUMBER>`:
 >
@@ -236,45 +344,67 @@ Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 > Residual human-QA debt tracked: <issue url>
 > ```
 >
-> **5b. Create debt issue.** First ensure label exists:
+> **5b. Consolidated debt issue.** First ensure label exists:
 > ```bash
 > gh label create qa-debt --color FBCA04 \
 >   --description "Residual human QA owed for a merged auto-QA PR" 2>/dev/null || true
 > ```
 >
-> Then create the issue:
+> Check whether a consolidated debt issue already exists:
 > ```bash
-> gh issue create --label qa-debt \
->   --title "qa-debt: PR #<n> — <feature>" \
->   --body "$(cat <<'EOF'
-> **PR:** #<n> — <link>
-> **Merged:** <date, or "pending merge">
-> **Risk tier:** <tier>
+> gh issue list --label qa-debt --state open --json number,title,url \
+>   | jq '.[] | select(.title | startswith("qa-debt: backlog"))'
+> ```
 >
-> ## Auto-covered
-> <short bullet list of regression areas exercised by Playwright>
+> **If a backlog issue exists:** append this PR's debt to it via a comment:
+> ```bash
+> gh issue comment <existing-issue-number> --body "$(cat <<'EOF'
+> ## PR #<n> — <feature> (<risk-tier> risk)
+> **PR:** <link>  |  **Date:** <today>
 >
-> ## Residual human-QA checklist
-> - [ ] Happy-path walkthrough in dev against real backend
-> - [ ] Cross-browser smoke (Safari, Firefox) for any user-visible UI changes
-> - [ ] Keyboard-only navigation / a11y for new interactive elements
-> - [ ] Perf on throttled network for pages that load new data
-> - [ ] Copy / UX review for any new user-facing strings
-> - [ ] <any scenario-specific residual items>
+> ### Auto-covered by Playwright
+> <bullet list from SPLIT_PATH auto-testable section>
 >
-> ## Payment rules
-> - High-risk: clear BEFORE merge.
-> - Medium-risk: clear before next release cut.
-> - Low-risk (flag-gated): clear before flag flip to 100%.
+> ### Human-only checklist
+> <checklist items verbatim from SPLIT_PATH human-only section, as - [ ] items>
+>
+> **Payment:** <High: clear BEFORE merge | Medium: before next release cut | Low: before flag flip>
 > EOF
 > )"
 > ```
 >
-> **5c. Threshold alarm.** Run:
+> **If no backlog issue exists:** create one:
 > ```bash
-> gh issue list --label qa-debt --state open --json number,createdAt
+> gh issue create --label qa-debt \
+>   --title "qa-debt: backlog" \
+>   --body "$(cat <<'EOF'
+> Consolidated QA debt backlog. Each section below is one PR's residual human-QA checklist, appended by /e2e-qa. Close this issue when all sections are checked off.
+>
+> ---
+>
+> ## PR #<n> — <feature> (<risk-tier> risk)
+> **PR:** <link>  |  **Date:** <today>
+>
+> ### Auto-covered by Playwright
+> <bullet list from SPLIT_PATH auto-testable section>
+>
+> ### Human-only checklist
+> <checklist items verbatim from SPLIT_PATH human-only section, as - [ ] items>
+>
+> **Payment:** <High: clear BEFORE merge | Medium: before next release cut | Low: before flag flip>
+> EOF
+> )"
 > ```
-> Alarm if open count ≥ 10 OR oldest open issue > 14 days. If alarm triggers, print THRESHOLD ALARM in the output.
+>
+> **5c. Threshold alarm.** Fetch the consolidated backlog issue's comments to count total unchecked items:
+> ```bash
+> gh issue list --label qa-debt --state open --json number,createdAt,title
+> ```
+> Count comments on the backlog issue to approximate pending PR sections:
+> ```bash
+> gh issue view <backlog-issue-number> --json comments --jq '.comments | length'
+> ```
+> Alarm if unchecked PR sections ≥ 10 OR backlog issue created > 30 days ago without being closed. If alarm triggers, print THRESHOLD ALARM in the output.
 >
 > Return:
 >
