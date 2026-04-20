@@ -153,17 +153,39 @@ The `Auto-testable` section seeds the Designer (Step 1) alongside the diff and s
 
 ---
 
-## Step 1 — Designer (read-only subagent)
+## Step 1 — Designer / Planner (read-only subagent)
 
 Spawn an Agent subagent (`model: "claude-sonnet-4-6"`, tools: read-only). Append to its prompt:
 
-> **Role:** Design Playwright scenarios from the QA split + PR diff + acceptance criteria. Read-only — do not write or modify any files except the output plan.
+> **Role:** Survey the repo's E2E test infrastructure, then design scenarios and a concrete placement plan for the Implementer. Read-only — do not write or modify any files except the output plan.
+>
+> **Phase 1 — Recon (do this first, before designing anything):**
+>
+> Discover how E2E tests are structured in this repo:
+> - Find all existing E2E/Playwright test files:
+>   ```bash
+>   grep -rl "playwright" . \
+>     --include="*.spec.ts" --include="*.spec.js" \
+>     --include="*.e2e.ts" --include="*.e2e.js" \
+>     --include="*.test.ts" --include="*.test.js" \
+>     --include="*.py" \
+>     --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=__pycache__ \
+>     2>/dev/null
+>   ```
+> - Read `playwright.config.ts` / `playwright.config.js` / `pytest.ini` / `pyproject.toml` to identify: test runner (Playwright JS vs pytest-playwright), `testDir`, base URL, fixture locations, project names.
+> - Read 1–2 representative existing test files to extract: import style, fixture usage, page object conventions, naming patterns, helper locations.
+> - Identify where new tests should be added (exact directory and file naming convention).
+>
+> Record your findings as **Infrastructure Notes** (runner, config path, test directory, fixture pattern, page object locations, naming convention, and the exact path where new test file(s) should be created).
+>
+> **Phase 2 — Scenario design:**
+>
+> Design scenarios from the QA split + PR diff + acceptance criteria.
 >
 > **Inputs to gather:**
 > - `SPLIT_PATH` (auto-testable items from the QA Splitter) — primary scenario seed
 > - `gh pr diff <pr>` — the actual change (not the description)
 > - Acceptance criteria from the linked issue (`gh issue view <n>`)
-> - Existing Playwright tests (patterns, fixtures, page objects)
 > - Existing unit tests (to avoid duplication)
 >
 > **Critical:** the auto-testable items from the QA split are your primary input — design one scenario per item. Do not invent scenarios beyond the split. Diff alone is dangerous — it describes *what shipped*, not *what was asked for*. If the diff has a bug, diff-only tests assert the bug as correct. Always pair diff with spec. Disagreement between diff and spec = bug, not test material.
@@ -178,7 +200,13 @@ Spawn an Agent subagent (`model: "claude-sonnet-4-6"`, tools: read-only). Append
 >  medium = user-facing feature no flag; low = behind flag, internal tool, or thin UI on backend change>
 >
 > ## Infrastructure Notes
-> <page objects, route stubs, test fixtures needed>
+> - **Runner**: <e.g. Playwright JS (npm test) | pytest-playwright (pytest)>
+> - **Config**: <path to playwright.config.ts or pytest.ini>
+> - **Test directory**: <e.g. tests/e2e/>
+> - **Naming convention**: <e.g. <feature>.spec.ts | test_<feature>.py>
+> - **New file(s) to create**: <exact path(s) the Implementer should write>
+> - **Fixtures / page objects**: <existing files to import/reuse>
+> - **Route stubs / test fixtures needed**: <any new infra required>
 >
 > ## Scenarios
 >
@@ -207,10 +235,12 @@ Spawn an Agent subagent (`model: "claude-sonnet-4-6"`, tools: read-only). Append
 > REPO=<owner/repo>
 > RISK_TIER=<high|medium|low>
 > SCENARIO_COUNT=<int>
+> TEST_RUNNER=<playwright-js|pytest-playwright>
+> NEW_TEST_FILES=<comma-separated exact paths for Implementer to create>
 > END_HANDOFF
 > ```
 
-Wait for completion. Parse `HANDOFF`. Carry `SPLIT_PATH` forward from Step 0b.
+Wait for completion. Parse `HANDOFF`. Carry `SPLIT_PATH`, `NEW_TEST_FILES`, and `TEST_RUNNER` forward into subsequent steps.
 
 **Gate**: if `--risk` was passed, override `RISK_TIER`. If `RISK_TIER=high`, warn the user: "High-risk PR — human QA should run *before* merge. Auto-QA runs anyway but does not discharge QA obligation." Continue.
 
@@ -220,7 +250,7 @@ Wait for completion. Parse `HANDOFF`. Carry `SPLIT_PATH` forward from Step 0b.
 
 Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 
-> **Role:** Write Playwright test code from the plan at `PLAN_PATH`. Implement critical + high priority scenarios.
+> **Role:** Write Playwright test code from the plan at `PLAN_PATH`. Implement critical + high priority scenarios. Write tests to the exact file paths specified in `NEW_TEST_FILES` using the runner, naming convention, and fixture patterns documented in the plan's Infrastructure Notes.
 >
 > **Hard rules (not negotiable):**
 > - Selectors: `getByRole`, `getByLabel`, `getByTestId` only. No CSS class or XPath selectors.
@@ -229,6 +259,7 @@ Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 > - Reuse: page objects / fixtures must come from existing files when available. No per-test helper duplication. If writing raw selectors in test bodies, refactor into a page object — brittleness compounds.
 > - Visual / a11y: if plan specifies `visual-snapshot` use `toHaveScreenshot()`; if `a11y-scan` use `@axe-core/playwright`.
 > - Lint/format after writing. Do NOT run tests — that is the Runner's job.
+> - After linting, commit the test files to the branch: `git add <TEST_FILES> && git commit -m "test(e2e): add Playwright scenarios for <feature>"`. This ensures tests ship with the PR.
 > - Test-mode endpoints are a last resort. Prefer `page.route()` stubs. If a scenario genuinely needs server-side puppeting, gate it behind the project's test-mode flag and never expose in production.
 >
 > **Budget:** if the plan has ≥ 10 new scenarios, flag to the user before implementing — may indicate the feature is too large or the plan duplicates unit coverage.
@@ -239,6 +270,7 @@ Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 > HANDOFF
 > TEST_FILES=<comma-separated absolute paths>
 > SCENARIOS_IMPLEMENTED=<int>
+> TEST_COMMIT=<sha>
 > END_HANDOFF
 > ```
 
@@ -301,6 +333,10 @@ Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 > ```
 
 Wait. If `ALL_PASSED=true` or (`APP_BUGS=0` and `TEST_BUGS=0`), break out of the loop.
+
+If `round == --max-rounds` and (`APP_BUGS > 0` or `TEST_BUGS > 0`), **stop execution entirely**. Do not spawn Reporter. Tell the user:
+
+> "E2E QA halted: max rounds (3) exhausted with N outstanding bug(s). Review `.claude-work/E2E_BUG_REPORT_R<round>.md`, fix the bugs manually, then re-run `/e2e-qa`."
 
 ### 3b. Fixer (skipped on the final round)
 
