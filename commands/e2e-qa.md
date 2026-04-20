@@ -100,13 +100,14 @@ Spawn an Agent subagent (`model: "claude-opus-4-6"`, tools: read-only). Append t
 > **Automation bucket — an item belongs here if ALL of:**
 > - It has deterministic, observable DOM outcomes (element visible, text matches, API called)
 > - It does not require visual/aesthetic judgment ("looks right", "feels smooth", "spacing is off")
-> - It does not require cross-browser manual verification beyond what headless Chromium covers
+> - Cross-browser DOM correctness (e.g. "button is focusable on WebKit") belongs here — Playwright runs WebKit and Firefox headlessly; only *visual judgment* on those browsers is human-only
 > - It does not require physical device or assistive technology (screen reader, keyboard-only with human judgment)
 > - It does not require reading copy for tone, clarity, or correctness
 >
 > **Human-only bucket — an item belongs here if ANY of:**
 > - Requires aesthetic or UX judgment
-> - Requires cross-browser testing on real browsers (Safari, Firefox)
+> - Requires cross-browser *visual* judgment (Playwright can run WebKit/Firefox headlessly and verify DOM — human is only needed when the question is "does it look right on Safari", not "does it render")
+> - Requires physical device testing (mobile Safari on iOS, real touch interactions)
 > - Requires assistive technology or keyboard-only flow with human judgment
 > - Requires performance perception on real hardware/network
 > - Requires copy/content review
