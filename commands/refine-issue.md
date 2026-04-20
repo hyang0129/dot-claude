@@ -128,22 +128,41 @@ When `GIT_ROOT` is empty, the Spec agent writes its output to a temp path instea
 
 ## Step 1 — Resume Check
 
-Before spawning anything, check whether a prior refinement exists for this issue:
+Before spawning anything, check whether prior work exists for this issue.
+
+**Generate a slug early** — you need it for both the resume check and Step 2 checkpointing:
+- Issue reference mode: derive from the issue title (lowercase, spaces→hyphens, truncate at 40 chars).
+- Free-form mode: derive from the first 8 words of the description the same way.
+
+Store it as `SLUG` for use throughout.
+
+**Check for existing work (both issue-ref and free-form mode):**
 
 ```bash
-ls "$GIT_ROOT/.claude-work/REFINED_"*"-<number>.md" 2>/dev/null
+# Completed spec
+ls "$GIT_ROOT/.claude-work/REFINED_${SLUG}"-*.md 2>/dev/null
+# Partial interview draft
+ls "$GIT_ROOT/.claude-work/INTENT_${SLUG}"-*.md 2>/dev/null
 ```
 
-If a file is found, ask the user:
+If a **completed spec** (`REFINED_*`) is found, ask:
 ```
-Found existing refined spec: .claude-work/REFINED_<slug>-<number>.md
+Found existing refined spec: .claude-work/REFINED_<slug>-<id>.md
 
 Resume from it (r) or start over (s)?
 ```
+- If **resume**: read the existing file, skip to Step 4 and proceed from there.
+- If **start over**: delete both the `REFINED_*` and any `INTENT_*` file, continue to Step 2.
 
-- If **resume**: read the existing file, skip to Step 4 (present it) and proceed from there.
-- If **start over**: delete the old file and continue to Step 2 (spawn Intent agent).
-- In free-form mode (no issue number): skip this check entirely.
+If only a **partial interview draft** (`INTENT_*`) is found (no `REFINED_*`), ask:
+```
+Found a partial interview draft: .claude-work/INTENT_<slug>-<id>.md
+The interview was interrupted before a spec was produced.
+
+Resume the interview from the saved Q&A (r) or start over (s)?
+```
+- If **resume**: read the draft, reconstruct what was covered from the Q&A log, and continue the interview from where it left off (Step 2) — do not re-ask questions already answered.
+- If **start over**: delete the draft and continue to Step 2 fresh.
 
 ---
 
@@ -238,8 +257,46 @@ attempt to summarize or restate the issue back to the user — start asking.
   ```
 - Wait for the user to confirm or correct before concluding.
 
-**Output:** When the user confirms, write a structured intent summary to:
-`.claude-work/INTENT_<slug>-<number>.md`
+**Checkpoint writes — do not wait until the end:**
+
+At the very start of Step 2 — before asking any questions — write a stub draft to:
+`.claude-work/INTENT_<slug>-<id>.md`
+
+```markdown
+# Intent Summary: <title or first line of description> [DRAFT — interview in progress]
+
+## Job Statement
+[pending]
+
+## Behavioral Intent
+[pending]
+
+## Hidden Assumptions Surfaced
+[pending]
+
+## Acceptance Conditions (user-stated)
+[pending]
+
+## Out of Scope
+[pending]
+
+## Motivation Context
+[pending]
+
+## Clarifying Q&A Log
+```
+
+After **each interview round**, append the exchange to the `Clarifying Q&A Log` section of the draft file:
+```
+**Round N**
+Q: <your questions>
+A: <user's answers>
+```
+
+This ensures that if the session is interrupted, partial work is recoverable via the resume check in Step 1.
+
+**Output:** When the user confirms, overwrite the draft with the finalized structured intent summary at the same path:
+`.claude-work/INTENT_<slug>-<id>.md`
 
 ```markdown
 # Intent Summary: <title>
