@@ -4,12 +4,6 @@ Orchestrator only. Runs Playwright-first automated QA on a feature PR, logs resi
 
 **This command never reads source files, never runs Playwright, and never writes code.** It sequences five subagents (Designer → Implementer → Runner ↔ Fixer → Reporter) with fresh context windows, then records debt.
 
-Read the guide before doing anything else:
-
-```
-~/.claude/guides/e2e-qa-guide.md
-```
-
 ---
 
 ## Args
@@ -26,7 +20,11 @@ Read the guide before doing anything else:
 
 We generate tests with a bot and ship them as part of the feature PR. Humans review *failures*, not test authorship. Human QA is reserved for the residual checklist (happy path walkthrough, cross-browser, a11y, perf, UX feel) and is tracked as debt on a GitHub issue.
 
-This trades per-PR human QA cost for **batched, scheduled** human QA — cheaper per unit of coverage, but only if the debt is bounded and paid. See guide for the four payment triggers.
+This trades per-PR human QA cost for **batched, scheduled** human QA — cheaper per unit of coverage, but only if the debt is bounded and paid.
+
+**What auto-QA captures:** regression-class bugs — frontend↔backend wiring, DOM events triggering API calls, rendering of API responses, cross-component side effects, state persistence. Realistically 60–75% of QA surface.
+
+**What auto-QA does NOT capture:** happy-path UX feel, cross-browser quirks, animation jank, focus order / a11y, perf on slow networks, copy review, visual polish. These are tracked as residual debt on a GitHub issue.
 
 ---
 
@@ -43,7 +41,46 @@ This trades per-PR human QA cost for **batched, scheduled** human QA — cheaper
 
 Spawn an Agent subagent (`model: "claude-sonnet-4-6"`, tools: read-only). Append to its prompt:
 
-> Follow `~/.claude/guides/e2e-qa-guide.md` **Phase 1 — Designer**. Input: PR diff (`gh pr diff <pr>`), acceptance criteria from the linked issue, and existing Playwright tests. Output: `.claude-work/E2E_<feature>_PLAN.md` with one scenario per user flow, each with a `why-not-unit` justification, a `playwright-feature` field, and a `risk-tier` classification for the PR as a whole. Stop after writing the plan. Return this block:
+> **Role:** Design Playwright scenarios from the PR diff + acceptance criteria. Read-only — do not write or modify any files except the output plan.
+>
+> **Inputs to gather:**
+> - `gh pr diff <pr>` — the actual change (not the description)
+> - Acceptance criteria from the linked issue (`gh issue view <n>`)
+> - Existing Playwright tests (patterns, fixtures, page objects)
+> - Existing unit tests (to avoid duplication)
+>
+> **Critical:** diff alone is dangerous — it describes *what shipped*, not *what was asked for*. If the diff has a bug, diff-only tests assert the bug as correct. Always pair diff with spec. Disagreement between diff and spec = bug, not test material.
+>
+> **Output:** Write `.claude-work/E2E_<feature>_PLAN.md` with this structure:
+>
+> ```markdown
+> # E2E Test Plan: <feature>
+>
+> ## PR Risk Tier: <high | medium | low>
+> <one-line justification: high = auth/payments/data-loss/public-launch;
+>  medium = user-facing feature no flag; low = behind flag, internal tool, or thin UI on backend change>
+>
+> ## Infrastructure Notes
+> <page objects, route stubs, test fixtures needed>
+>
+> ## Scenarios
+>
+> ### S1: <name>
+> - **Priority**: critical | high | medium | low
+> - **Why not a unit test**: <must be justified — if unit test could cover it, cut the scenario>
+> - **Playwright feature**: route-stub | real-backend | visual-snapshot | a11y-scan
+> - **Setup**: <preconditions>
+> - **Steps**: <numbered user actions, in terms of roles/labels not selectors>
+> - **Expected**: <observable outcomes>
+> ```
+>
+> **Rules:**
+> - One scenario per distinct user flow, not per code change.
+> - Every scenario must have a `why-not-unit` justification. No justification → cut it.
+> - Risk tier classifies the PR as a whole, not individual scenarios.
+> - Do not duplicate unit coverage — the `why-not-unit` field is the filter.
+>
+> Return this block exactly:
 >
 > ```
 > HANDOFF
@@ -66,7 +103,20 @@ Wait for completion. Parse `HANDOFF`.
 
 Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 
-> Follow `~/.claude/guides/e2e-qa-guide.md` **Phase 2 — Implementer**. Read `PLAN_PATH` and existing Playwright test files. Hard rules from the guide: `getByRole`/`getByTestId` only, no `waitForTimeout`, page-object reuse required, `page.route()` preferred over mocking. Implement critical + high scenarios. Run linter. Do NOT run tests. Return:
+> **Role:** Write Playwright test code from the plan at `PLAN_PATH`. Implement critical + high priority scenarios.
+>
+> **Hard rules (not negotiable):**
+> - Selectors: `getByRole`, `getByLabel`, `getByTestId` only. No CSS class or XPath selectors.
+> - Waits: Playwright auto-waits. No `waitForTimeout`. Use `expect(...).toBeVisible()` etc.
+> - Network: `page.route()` for stubs. Prefer over browser-side mocking.
+> - Reuse: page objects / fixtures must come from existing files when available. No per-test helper duplication. If writing raw selectors in test bodies, refactor into a page object — brittleness compounds.
+> - Visual / a11y: if plan specifies `visual-snapshot` use `toHaveScreenshot()`; if `a11y-scan` use `@axe-core/playwright`.
+> - Lint/format after writing. Do NOT run tests — that is the Runner's job.
+> - Test-mode endpoints are a last resort. Prefer `page.route()` stubs. If a scenario genuinely needs server-side puppeting, gate it behind the project's test-mode flag and never expose in production.
+>
+> **Budget:** if the plan has ≥ 10 new scenarios, flag to the user before implementing — may indicate the feature is too large or the plan duplicates unit coverage.
+>
+> Return:
 >
 > ```
 > HANDOFF
@@ -87,7 +137,41 @@ For `round` in 1..`--max-rounds`:
 
 Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 
-> Follow `~/.claude/guides/e2e-qa-guide.md` **Phase 3 — Runner**, round `<round>`. Run the tests at `TEST_FILES`. For each failure, re-run the failing test 3× in isolation to distinguish deterministic bugs from flakes. Classify each finding as `app-bug`, `test-bug`, or `flake-quarantine`. Write `.claude-work/E2E_BUG_REPORT_R<round>.md`. Attach Playwright trace paths. Return:
+> **Role:** Run tests, distinguish bugs from flakes, diagnose root causes. Round `<round>`.
+>
+> **Steps:**
+> 1. Kill any running server/dev instances per project convention.
+> 2. Run unit tests first — baseline must be green before running E2E.
+> 3. Run Playwright tests at `TEST_FILES`, capturing traces on failure.
+> 4. For each failing test, **re-run it 3× in isolation**:
+>    - 3/3 fail deterministically → real bug. Read source, diagnose root cause.
+>    - Intermittent → `flake-quarantine`. Do NOT report as a bug. Do NOT let Fixer touch it.
+> 5. Classify real bugs as `app-bug` (production code is wrong) or `test-bug` (test assertion or setup is wrong). One root cause often cascades across many tests — report the cause once, not per symptom.
+>
+> **Output:** Write `.claude-work/E2E_BUG_REPORT_R<round>.md`:
+>
+> ```markdown
+> # E2E Bug Report — Round <N>
+>
+> ## Results
+> - Passed: N
+> - Failed: N  (deterministic: N, quarantined flakes: N)
+>
+> ## Bugs
+>
+> ### BUG-R<N>-1: <title>
+> - **Tests affected**: <test names>
+> - **Type**: app-bug | test-bug
+> - **Severity**: critical | high | medium
+> - **Root cause**: <analysis from reading source>
+> - **Fix**: <what changes where>
+> - **Trace**: <path to trace.zip>
+>
+> ## Quarantined Flakes
+> - <test name> — <observed failure> — reran 3×, passed N/3. Not fixed this round.
+> ```
+>
+> Return:
 >
 > ```
 > HANDOFF
@@ -105,9 +189,18 @@ Wait. If `ALL_PASSED=true` or (`APP_BUGS=0` and `TEST_BUGS=0`), break out of the
 
 If `round == --max-rounds`, skip Fixer — the final round is report-only.
 
-Otherwise spawn an Agent subagent. Append:
+Otherwise spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 
-> Follow `~/.claude/guides/e2e-qa-guide.md` **Phase 4 — Fixer**. Read `REPORT_PATH`. Fix `app-bug` and `test-bug` entries only — leave `flake-quarantine` items alone. **Commit app-bug fixes and test-bug fixes as separate commits** with messages `fix(app): ...` and `fix(test): ...`. Run unit tests. Do NOT run Playwright. Return:
+> **Role:** Apply fixes from `REPORT_PATH` with strict separation of concerns.
+>
+> **Rules:**
+> - Fix `app-bug` and `test-bug` entries only. Leave `flake-quarantine` items completely alone.
+> - **Separate commits required.** `fix(app): ...` commits and `fix(test): ...` commits must never be combined. This makes bad fixes revertable without losing the other category.
+> - Minimal changes only. No refactoring, no "while I'm here" cleanup.
+> - Do not weaken test assertions to make a test pass. If an assertion is wrong, the Runner classified it as `test-bug` with a root cause — fix the root cause.
+> - Run lint + unit tests after fixing. Do NOT run Playwright — the Runner owns that.
+>
+> Return:
 >
 > ```
 > HANDOFF
@@ -124,16 +217,64 @@ Wait. Continue to round `n+1`.
 
 Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 
-> Follow `~/.claude/guides/e2e-qa-guide.md` **Phase 5 — Reporter**.
+> **Role:** Post PR summary, file debt issue, check thresholds.
 >
-> 1. Aggregate all round reports into a final summary table.
-> 2. Post the summary as a PR comment via `gh pr comment <PR_NUMBER>`.
-> 3. Ensure the `qa-debt` label exists: `gh label create qa-debt --color FBCA04 --description "Residual human QA owed for a merged auto-QA PR" || true`.
-> 4. Create a GitHub issue via `gh issue create` with:
->    - Title: `qa-debt: PR #<PR_NUMBER> — <feature-title>`
->    - Label: `qa-debt`
->    - Body: the residual checklist template from the guide, filled in with this PR's specifics, risk tier, and the PR link.
-> 5. Check open `qa-debt` issues via `gh issue list --label qa-debt --state open --json number,createdAt`. If count ≥ 10 or oldest > 14 days, print a THRESHOLD ALARM in the final output.
+> **5a. Post PR summary comment** via `gh pr comment <PR_NUMBER>`:
+>
+> ```markdown
+> ## E2E QA: <PASS | FAIL>
+>
+> | Round | Passed | Failed | App Bugs | Test Bugs | Flakes |
+> |-------|--------|--------|----------|-----------|--------|
+> | R1    | N/M    | N      | N        | N         | N      |
+>
+> **App bugs fixed:** <list>
+> **Test bugs fixed:** <list>
+> **Quarantined flakes:** <list — need human triage>
+> **Outstanding:** <any bugs remaining after max rounds>
+>
+> Residual human-QA debt tracked: <issue url>
+> ```
+>
+> **5b. Create debt issue.** First ensure label exists:
+> ```bash
+> gh label create qa-debt --color FBCA04 \
+>   --description "Residual human QA owed for a merged auto-QA PR" 2>/dev/null || true
+> ```
+>
+> Then create the issue:
+> ```bash
+> gh issue create --label qa-debt \
+>   --title "qa-debt: PR #<n> — <feature>" \
+>   --body "$(cat <<'EOF'
+> **PR:** #<n> — <link>
+> **Merged:** <date, or "pending merge">
+> **Risk tier:** <tier>
+>
+> ## Auto-covered
+> <short bullet list of regression areas exercised by Playwright>
+>
+> ## Residual human-QA checklist
+> - [ ] Happy-path walkthrough in dev against real backend
+> - [ ] Cross-browser smoke (Safari, Firefox) for any user-visible UI changes
+> - [ ] Keyboard-only navigation / a11y for new interactive elements
+> - [ ] Perf on throttled network for pages that load new data
+> - [ ] Copy / UX review for any new user-facing strings
+> - [ ] <any scenario-specific residual items>
+>
+> ## Payment rules
+> - High-risk: clear BEFORE merge.
+> - Medium-risk: clear before next release cut.
+> - Low-risk (flag-gated): clear before flag flip to 100%.
+> EOF
+> )"
+> ```
+>
+> **5c. Threshold alarm.** Run:
+> ```bash
+> gh issue list --label qa-debt --state open --json number,createdAt
+> ```
+> Alarm if open count ≥ 10 OR oldest open issue > 14 days. If alarm triggers, print THRESHOLD ALARM in the output.
 >
 > Return:
 >
