@@ -41,7 +41,7 @@ This trades per-PR human QA cost for **batched, scheduled** human QA — cheaper
 
 ## Step 1 — Designer (read-only subagent)
 
-Spawn an Agent subagent (`model: "claude-opus-4-7"`, tools: read-only). Append to its prompt:
+Spawn an Agent subagent (`model: "claude-sonnet-4-6"`, tools: read-only). Append to its prompt:
 
 > Follow `~/.claude/guides/e2e-qa-guide.md` **Phase 1 — Designer**. Input: PR diff (`gh pr diff <pr>`), acceptance criteria from the linked issue, and existing Playwright tests. Output: `.claude-work/E2E_<feature>_PLAN.md` with one scenario per user flow, each with a `why-not-unit` justification, a `playwright-feature` field, and a `risk-tier` classification for the PR as a whole. Stop after writing the plan. Return this block:
 >
@@ -64,7 +64,7 @@ Wait for completion. Parse `HANDOFF`.
 
 ## Step 2 — Implementer
 
-Spawn an Agent subagent (`model: "claude-opus-4-7"`). Append:
+Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 
 > Follow `~/.claude/guides/e2e-qa-guide.md` **Phase 2 — Implementer**. Read `PLAN_PATH` and existing Playwright test files. Hard rules from the guide: `getByRole`/`getByTestId` only, no `waitForTimeout`, page-object reuse required, `page.route()` preferred over mocking. Implement critical + high scenarios. Run linter. Do NOT run tests. Return:
 >
@@ -85,7 +85,7 @@ For `round` in 1..`--max-rounds`:
 
 ### 3a. Runner
 
-Spawn an Agent subagent (`model: "claude-opus-4-7"`). Append:
+Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 
 > Follow `~/.claude/guides/e2e-qa-guide.md` **Phase 3 — Runner**, round `<round>`. Run the tests at `TEST_FILES`. For each failure, re-run the failing test 3× in isolation to distinguish deterministic bugs from flakes. Classify each finding as `app-bug`, `test-bug`, or `flake-quarantine`. Write `.claude-work/E2E_BUG_REPORT_R<round>.md`. Attach Playwright trace paths. Return:
 >
@@ -122,7 +122,7 @@ Wait. Continue to round `n+1`.
 
 ## Step 4 — Reporter & debt ledger
 
-Spawn an Agent subagent (`model: "claude-opus-4-7"`). Append:
+Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 
 > Follow `~/.claude/guides/e2e-qa-guide.md` **Phase 5 — Reporter**.
 >
