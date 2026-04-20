@@ -259,9 +259,9 @@ attempt to summarize or restate the issue back to the user — start asking.
 
 **Checkpoint writes — do not wait until the end:**
 
-At the very start of Step 2 — before asking any questions — write a stub draft to:
-`.claude-work/INTENT_<slug>-<id>.md`
+At the very start of Step 2 — before asking any questions — write a stub draft locally and on GitHub:
 
+**Local file** `.claude-work/INTENT_<slug>-<id>.md`:
 ```markdown
 # Intent Summary: <title or first line of description> [DRAFT — interview in progress]
 
@@ -286,16 +286,61 @@ At the very start of Step 2 — before asking any questions — write a stub dra
 ## Clarifying Q&A Log
 ```
 
-After **each interview round**, append the exchange to the `Clarifying Q&A Log` section of the draft file:
+**GitHub (issue-ref mode):** Post a comment on the existing issue and capture its ID:
+```bash
+COMMENT_ID=$(gh issue comment <number> --repo <REPO> \
+  --body "## Intent Interview — in progress
+
+*The intent interview has started. This comment will be updated after each round.*
+
+### Q&A Log
+*(no rounds completed yet)*" \
+  --json id --jq '.id')
+```
+
+**GitHub (free-form mode):** Create the GitHub issue now (before asking questions) with a draft body, and capture the new issue number for use as `<id>` throughout:
+```bash
+ISSUE_URL=$(gh issue create --repo <REPO> \
+  --title "<first ~10 words of description>" \
+  --body "## Intent Interview — in progress
+
+*The intent interview has started. This issue will be updated after each round.*
+
+### Q&A Log
+*(no rounds completed yet)*")
+# Extract issue number from URL for use as <id>
+```
+
+After **each interview round**, do both:
+
+1. Append to the local draft file's `Clarifying Q&A Log` section:
 ```
 **Round N**
 Q: <your questions>
 A: <user's answers>
 ```
 
-This ensures that if the session is interrupted, partial work is recoverable via the resume check in Step 1.
+2. Edit the GitHub comment/issue body to append the new round:
+```bash
+# Issue-ref mode — update the existing comment
+gh api repos/<REPO>/issues/comments/$COMMENT_ID \
+  --method PATCH \
+  --field body="## Intent Interview — in progress
+...
+### Q&A Log
+**Round 1** ...
+**Round N**
+Q: <questions>
+A: <answers>"
 
-**Output:** When the user confirms, overwrite the draft with the finalized structured intent summary at the same path:
+# Free-form mode — update the issue body
+gh issue edit <new-issue-number> --repo <REPO> \
+  --body "<updated body with new round appended>"
+```
+
+This ensures that if the session is interrupted, the work is recoverable from GitHub (not just the local filesystem), and the resume check in Step 1 can pick up either source.
+
+**Output:** When the user confirms, overwrite the local draft with the finalized intent summary. Then replace the GitHub comment/issue body with the final content (no "[DRAFT]" marker):
 `.claude-work/INTENT_<slug>-<id>.md`
 
 ```markdown
