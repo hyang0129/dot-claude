@@ -33,7 +33,17 @@ This trades per-PR human QA cost for **batched, scheduled** human QA — cheaper
 1. PR exists (or branch has commits not yet in a PR — create one first via `gh pr create`).
 2. Unit tests pass on the branch (Runner will re-verify).
 3. `gh auth status` succeeds and the repo has a `qa-debt` label (Reporter will create if missing).
-4. Playwright is installed in the repo. If not, stop and tell the user to add it.
+4. At least one test file uses Playwright (JS or Python). Verify:
+   ```bash
+   grep -rl "playwright" . \
+     --include="*.spec.ts" --include="*.spec.js" \
+     --include="*.e2e.ts" --include="*.e2e.js" \
+     --include="*.test.ts" --include="*.test.js" \
+     --include="*.py" \
+     --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=__pycache__ \
+     2>/dev/null | head -1
+   ```
+   If no matches, stop and tell the user this repo has no Playwright tests.
 
 ---
 

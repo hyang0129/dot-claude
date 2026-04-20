@@ -613,22 +613,19 @@ First, resolve the E2E directory:
 - If `--e2e-dir` was passed → `E2E_DIR="$E2E_DIR_OVERRIDE"`.
 - Otherwise → `E2E_DIR="$WORK_DIR"`.
 
-Then detect whether `E2E_DIR` has Playwright infrastructure:
+Detect whether `E2E_DIR` has any test files using Playwright (JS or Python):
 
 ```bash
-# 1. Playwright dependency present?
-grep -rl '"@playwright/test"' "$E2E_DIR/package.json" "$E2E_DIR/package-lock.json" \
-  "$E2E_DIR/yarn.lock" "$E2E_DIR/pnpm-lock.yaml" 2>/dev/null | head -1
-
-# 2. Playwright config present?
-ls "$E2E_DIR"/playwright.config.* 2>/dev/null
-
-# 3. Existing E2E test files?
-find "$E2E_DIR" -type f \( -name "*.spec.ts" -o -name "*.spec.js" -o -name "*.e2e.ts" -o -name "*.e2e.js" \) \
-  -not -path "*/node_modules/*" 2>/dev/null | head -5
+grep -rl "playwright" "$E2E_DIR" \
+  --include="*.spec.ts" --include="*.spec.js" \
+  --include="*.e2e.ts" --include="*.e2e.js" \
+  --include="*.test.ts" --include="*.test.js" \
+  --include="*.py" \
+  --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=__pycache__ \
+  2>/dev/null | head -1
 ```
 
-**Skip the rest of this step** if any of the three checks come up empty — the repo has no Playwright E2E capability.
+**Skip the rest of this step** if this returns no matches — the repo has no Playwright tests.
 
 If all three checks pass, push the current commits and run E2E QA:
 
