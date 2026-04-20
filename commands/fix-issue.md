@@ -2,13 +2,14 @@
 
 ## Setup
 
-Parse arguments — format is: `/fix-issue <issue> [tier] [--worktree] [--base <branch>]`
+Parse arguments — format is: `/fix-issue <issue> [tier] [--worktree] [--base <branch>] [--e2e-dir <path>]`
 - `issue`: required. GitHub issue number (e.g. `42`) or full URL.
 - `tier`: optional override: `1`, `2`, or `3`. If omitted, tier is auto-detected.
 - `--worktree`: optional flag. If present, create a `git worktree` for the feature branch instead of checking it out in the main repo. The worktree is created as a sibling directory (`../repo-name-issue-<number>/`). Useful when multiple issues are being worked in parallel or when the main repo must stay on its current branch.
 - `--base <branch>`: optional. Override the base branch instead of auto-detecting `dev`/`develop`/`main`. Used by `/resolve-epic` to target an epic branch. When set, the PR also targets this branch.
+- `--e2e-dir <path>`: optional. Directory to search for Playwright infrastructure in Step 5b. Use when E2E tests live outside the repo (e.g. a dev container mount). Defaults to `$WORK_DIR` if omitted.
 
-Strip `--worktree` and `--base <branch>` from the argument list before parsing `issue` and `tier`. Set `WORKTREE_MODE=true` if `--worktree` was present, otherwise `WORKTREE_MODE=false`. Set `BASE_OVERRIDE` to the branch name if `--base` was present, otherwise leave unset.
+Strip `--worktree`, `--base <branch>`, and `--e2e-dir <path>` from the argument list before parsing `issue` and `tier`. Set `WORKTREE_MODE=true` if `--worktree` was present, otherwise `WORKTREE_MODE=false`. Set `BASE_OVERRIDE` to the branch name if `--base` was present, otherwise leave unset. Set `E2E_DIR_OVERRIDE` to the path if `--e2e-dir` was present, otherwise leave unset.
 
 Examples:
 - `/fix-issue 42` → fetch issue #42, auto-detect tier, normal checkout
@@ -17,6 +18,7 @@ Examples:
 - `/fix-issue 42 2 --worktree` → force Tier 2, use a git worktree
 - `/fix-issue https://github.com/org/repo/issues/42` → full URL form
 - `/fix-issue 42 --base epic/601-rendering-pipeline` → branch off and PR into the epic branch
+- `/fix-issue 42 --e2e-dir D:/containers/claude-rts` → run E2E detection against the container mount
 
 Read the agent team guide before doing anything else:
 ```
@@ -606,15 +608,10 @@ After the Reviewer finishes:
 
 ## Step 5b — E2E QA (Playwright repos only)
 
-First, resolve the E2E directory. Playwright infrastructure may live outside the repo working tree (e.g. in a dev container mount). Check in order:
+First, resolve the E2E directory:
 
-```bash
-# 1. Does a known container E2E root exist?
-ls "D:/containers/claude-rts" 2>/dev/null && echo "FOUND" || echo "NOT_FOUND"
-```
-
-- If `D:/containers/claude-rts` exists → set `E2E_DIR="D:/containers/claude-rts"`.
-- Otherwise → set `E2E_DIR="$WORK_DIR"`.
+- If `--e2e-dir` was passed → `E2E_DIR="$E2E_DIR_OVERRIDE"`.
+- Otherwise → `E2E_DIR="$WORK_DIR"`.
 
 Then detect whether `E2E_DIR` has Playwright infrastructure:
 
