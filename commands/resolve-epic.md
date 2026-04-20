@@ -103,7 +103,89 @@ The orchestrator reads the handoff and sets `GIT_ROOT`, `DEV_BASE`, and `EPIC_BR
 
 ---
 
+## Step 1.5 — Detect `/refine-epic` Handoff
+
+If `/refine-epic` has already run on this epic, most of Steps 2–4 are redundant: the
+decomposition, child issues, and validated intent already exist. Probe for refine-epic
+artifacts before spawning the planning team.
+
+Spawn a **Refine Detection Agent** (`model: "claude-sonnet-4-6"`).
+
+### Refine Detection Agent instructions
+
+Role: state detection only. No source file changes, no git changes, no issue creation.
+
+1. Check the epic issue body for a `## Validated Intent` section and a comment with the
+   `<!-- INTENT_DOC -->` marker:
+   ```bash
+   gh issue view <number> --repo <REPO> --json body,comments \
+     --jq '{has_intent_section: (.body | test("## Validated Intent")),
+            intent_comment_url: (.comments[] | select(.body | test("<!-- INTENT_DOC -->")) | .url) // ""}'
+   ```
+
+2. Locate the refine-epic scratch directory (matches `$GIT_ROOT/.claude-work/EPIC_*-<number>/`):
+   ```bash
+   ls -d "$GIT_ROOT"/.claude-work/EPIC_*-<number>/ 2>/dev/null | head -1
+   ```
+   If found, record as `EPIC_DIR` and check for `intent.md`, `intent-compressed.md`, `index.md`,
+   and `child-*.md` files.
+
+3. Find child issues already linked to the epic (refine-epic creates these with the
+   `child-issue` label and `Part of epic #<number>` in the body):
+   ```bash
+   gh issue list --repo <REPO> \
+     --search "\"Part of epic #<number>\" in:body" \
+     --json number,title,state,labels \
+     --limit 50
+   ```
+
+4. If `index.md` exists, parse its Decomposition Table and dependency graph to determine the
+   ordered child-issue list. Cross-reference child issue numbers from step 3 with the
+   `Child N → #<child-number>` mapping recorded in `index.md` (refine-epic Step 4 writes this).
+
+5. Return ONLY this HANDOFF block:
+   ```
+   HANDOFF
+   REFINE_HANDOFF=<true|false>
+   EPIC_DIR=<absolute path, or empty>
+   INTENT_COMMENT_URL=<url, or empty>
+   INDEX_PRESENT=<true|false>
+   INTENT_PRESENT=<true|false>
+   CHILD_ISSUES_ORDERED=<comma-delimited issue numbers in dependency order, or empty>
+   CHILD_COUNT=<integer>
+   UNKNOWNS_BLOCKED=<true|false — true if index.md status is UNKNOWNS_BLOCKED>
+   END_HANDOFF
+   ```
+
+Set `REFINE_HANDOFF=true` only if **all** of: `INDEX_PRESENT=true`, `INTENT_PRESENT=true`,
+`CHILD_COUNT>0`, `UNKNOWNS_BLOCKED=false`.
+
+### Orchestrator branch on handoff
+
+- **If `REFINE_HANDOFF=true`**: skip Steps 2, 3, and 4 entirely. Use `CHILD_ISSUES_ORDERED`
+  as the `SUB_ISSUES` list for Step 5. Post a lightweight tracking comment on the epic (same
+  format as Step 4's tracking comment) referencing the existing children, then jump to Step 5.
+  - The intent document already captures decision priors, invariants, and feared failure modes
+    — the role of the Architect/ADR is already filled. Do NOT spawn an ADR agent unless new
+    cross-cutting questions surface during sub-issue resolution.
+  - Integration seams, risk register, and QA checklist already exist in `index.md`. The Step 7
+    Documentation Agent should read `index.md` and `intent.md` instead of regenerating them.
+  - Smoke tests for each sub-issue come from the child draft's Acceptance Scenarios rather
+    than the decomposition's `Smoke tests` field. Each Smoke Test Runner invocation should
+    read `$EPIC_DIR/child-<N>-<slug>.md` for the relevant child.
+
+- **If `UNKNOWNS_BLOCKED=true`**: stop and report to the user — refine-epic flagged P0
+  unknowns that must be resolved before implementation. Do not proceed to Step 2.
+
+- **If `REFINE_HANDOFF=false`**: proceed to Step 2 as normal (no refine-epic artifacts
+  found, or they are incomplete).
+
+---
+
 ## Step 2 — Epic Planning Team
+
+*Skip this step entirely if Step 1.5 returned `REFINE_HANDOFF=true`.*
+
 
 The decomposition of an epic into sub-issues is a critical decision that shapes the entire implementation. A single agent's perspective is insufficient — different concerns (architecture, testing, sequencing, risk) must be weighed against each other.
 
@@ -260,6 +342,10 @@ The orchestrator parses the HANDOFF block. It does not read the decomposition fi
 
 ## Step 3 — Front-Loaded ADR (if architecture questions exist)
 
+*Skip this step if Step 1.5 returned `REFINE_HANDOFF=true` — the refine-epic intent document
+already captures resolved Decision Priors and Invariants. Only run ADR for net-new questions.*
+
+
 If the Synthesis Agent handoff returned `HAS_ARCH_QUESTIONS=true`, spawn an **Architect Agent** (`model: "claude-opus-4-6"`).
 
 ### Architect Agent instructions
@@ -284,6 +370,11 @@ If the decomposition has **no** architecture questions, skip this step entirely 
 ---
 
 ## Step 4 — Create Sub-Issues on GitHub
+
+*Skip this step if Step 1.5 returned `REFINE_HANDOFF=true` — refine-epic already created the
+child issues. Use `CHILD_ISSUES_ORDERED` as the sub-issue list and post only the tracking
+comment on the epic.*
+
 
 Spawn an **Issue Creation Agent** (`model: "claude-sonnet-4-6"`) to create the sub-issues and post the tracking comment.
 
