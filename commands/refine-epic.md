@@ -46,6 +46,22 @@ Input detection:
 - Matches `^https?://github\.com/` → extract `owner/repo` and issue number from URL.
 - Otherwise → free-form description.
 
+Optional flag: `--org` activates org mode (see Mode below).
+
+---
+
+## Mode
+
+Default: **solo**. Pass `--org` after the epic argument to activate org mode.
+
+- **solo** — assumes single-author ownership. Adjacent-team coordination, stakeholder
+  confirmation gates, and sign-off tables are skipped. Questions are compressed to premortem
+  + Q-success + scan-calibrated follow-ups. Multi-angle Challenger pass (3 parallel agents)
+  replaces the single Challenger.
+- **org** — full protocol. Stakeholder matrix, borrowed-invariant dispositions, Sub-phase 6
+  confirmation gate, sign-off table, and all required questions. Single Challenger is replaced
+  by the same 3-agent multi-angle pass (applies to both modes).
+
 ---
 
 ## Setup
@@ -220,21 +236,29 @@ do not interpret.
 **Scan target 3 — Coarse module boundaries.** Top-level packages/directories the epic will
 touch. Name only — do not read internals yet.
 
-**Scan target 4 — Stakeholder map (CODEOWNERS + call graph).** Read `CODEOWNERS` if present.
-For every module the epic will touch, identify the owning team. For every symbol or file the
-epic will modify, grep for call sites *outside* the owning module — those are downstream
-consumers. Produce: `<module> → owner → N external consumers`.
+**Scan target 4 — Coupling map.** For every symbol or file the epic will modify, grep for
+call sites *outside* the defining module — those are downstream consumers. Produce a
+coupling summary: `<module> → N external call sites`.
+
+*Org mode only:* also read `CODEOWNERS`. Identify the owning team per module and extend the
+summary to: `<module> → owner → N external consumers`. This owner column drives the
+stakeholder matrix and Sub-phase 6.
 
 **Scan target 5 — Borrowed invariants.** Identify contracts this epic will load-bear on:
 schemas, SLOs documented in code or config, rate limits, auth boundaries, retention policies.
 These are constraints the epic depends on but does not own.
 
+*Solo mode:* flag only invariants owned by external systems (third-party APIs, vendor
+contracts, platform SLOs you do not control). Internally-owned invariants are treated as
+confirmed by default — the author is the owner.
+
 Produce two working artifacts (not output files yet — surfaced inline during Sub-phase 3):
 
 1. **Inferences list.** Up to 5 named inferences, prioritized by "would change the shape of
    at least one child issue if wrong." Format: `[INFER] <claim>. Confirm or correct.`
-2. **Stakeholder matrix.** Every adjacent team and the specific surface they own that this
-   epic will touch, plus every borrowed invariant with its owner.
+2. **Coupling / stakeholder summary.** Solo mode: coupling summary per module + any external
+   borrowed invariants. Org mode: full stakeholder matrix (teams + surfaces owned) + all
+   borrowed invariants with owners.
 
 ---
 
@@ -243,15 +267,23 @@ Produce two working artifacts (not output files yet — surfaced inline during S
 From the scan, assess epic size and pick a tier. State the choice to the user with reasoning
 drawn from the scan; allow one override.
 
-- **Lite** — touches ≤1 module, no adjacent team owns affected code, <1 week of work,
-  ≤2 child issues. Output: a Kill-Criterion Card (5 fields, ~150 words). No full intent doc,
-  no compressed derivative, no changelog comment.
+**Solo mode** (default):
+- **Lite** — touches ≤1 module, <1 week of work, ≤2 child issues.
+- **Standard** — 2–3 modules, 1–4 weeks, 3–6 child issues.
+- **Heavy** — >3 modules, or >4 weeks, or >6 child issues, or Sub-phase 1 found a rejection
+  signal against a library currently in production.
+
+**Org mode** (`--org`):
+- **Lite** — touches ≤1 module, no adjacent team owns affected code, <1 week of work, ≤2 child issues.
 - **Standard** — 2–3 modules, 1–2 adjacent teams affected, 1–4 weeks, 3–6 child issues.
-  Output: full `intent.md` + extractive compression + GitHub publishing.
 - **Heavy** — >3 modules, or >2 adjacent teams affected, or >4 weeks, or >6 child issues, or
-  Sub-phase 1 found a rejection signal against a library currently in production. Output:
-  Standard + mandatory stakeholder confirmation before decomposition + required ADR links
-  for ONE-WAY-DOOR priors.
+  Sub-phase 1 found a rejection signal against a library currently in production.
+
+Output per tier (both modes):
+- **Lite** — Kill-Criterion Card (~150 words). No full intent doc, no compressed derivative, no changelog comment.
+- **Standard** — full `intent.md` + extractive compression + GitHub publishing.
+- **Heavy** — Standard + required ADR links for ONE-WAY-DOOR priors. Org mode also requires
+  mandatory stakeholder confirmation before decomposition (Sub-phase 6).
 
 Present:
 ```
@@ -287,7 +319,16 @@ Sub-phase 1 evidence. Do not ask abstract tradeoff questions. Templates:
 - *"Here are two inferences I could draw from the same evidence: A or B. Which is closer, or
   is it neither?"* (use this disconfirming frame for at least one follow-up)
 
-**Required questions (Standard + Heavy):**
+**Required questions:**
+
+*Solo mode (Standard + Heavy)* — premortem, scan-calibrated follow-ups, and Q-success only.
+All other questions are dropped: Q-commitment and shape are covered by the multi-angle
+Challenger pass (Sub-phase 5); Q-kill and Q-portfolio are assumed (invoking `/refine-epic`
+signals intent to build now; abandonment needs no formal criterion when you're the whole team).
+Q-borrowed applies only if Sub-phase 1 found external invariants (third-party APIs, vendor
+contracts) — ask only for those, scoped to blast radius if the assumption breaks.
+
+*Org mode (Standard + Heavy)* — all questions below apply:
 
 - **Q-stakeholders:** "Name three people or teams who must not be surprised when this ships.
   For each, what's the specific thing they'd be surprised by?"
@@ -303,8 +344,8 @@ Sub-phase 1 evidence. Do not ask abstract tradeoff questions. Templates:
   ship it poorly, abandon it?"
 - **Q-portfolio:** "What are you not doing this cycle because you're doing this?"
 
-**Lite tier asks only:** premortem, Q-kill, Q-success, Q-stakeholders (if any external
-consumers exist in the scan), Q-portfolio. Skip the rest.
+**Lite tier** — solo: premortem + Q-success only. Org: premortem, Q-kill, Q-success,
+Q-stakeholders (if external consumers exist in scan), Q-portfolio. Skip the rest.
 
 Present all questions for a round together in a single block — do not serialize.
 
@@ -320,7 +361,7 @@ Bluffing signals:
 - Certainty markers without reasoning ("obviously", "clearly", "we all know").
 - Tradeoff answers that name both sides without committing ("fast *and* correct").
 - Invariants phrased as preferences ("should be", "ideally", "would be nice").
-- No named alternative in Q-kill or priors ("nothing really", "we just knew").
+- No named alternative in decision priors, or in Q-kill if asked ("nothing really", "we just knew").
 - Feared-failure mode that's a restatement of the goal inverted ("failure = it doesn't work").
 
 Considered-position signals (do not probe further):
@@ -335,51 +376,97 @@ Continue probing until answers carry concrete anchors.
 
 ---
 
-**Sub-phase 5 — Challenger Pass (Standard + Heavy only)**
+**Sub-phase 5 — Multi-Angle Challenger Pass (Standard + Heavy only)**
 
-Before writing the intent document, spawn a **Challenger subagent**
-(`model: "claude-sonnet-4-6"`). This is the single highest-leverage structural protection
-against sycophancy — the Clarifier stops being the only voice in the room.
+Spawn three Challenger subagents **in parallel** (`model: "claude-sonnet-4-6"`), each with a
+distinct adversarial lens. Running them in parallel prevents challengers from anchoring on
+each other's arguments. This is the highest-leverage structural protection against sycophancy
+— and in solo mode, where no team exists to push back, it is the only external voice in the room.
 
-Pass the Challenger:
-- Sub-phase 1 scan outputs (inferences list, stakeholder matrix, borrowed invariants).
-- The Q&A transcript from Sub-phase 3, verbatim.
-- **Do NOT pass the epic body text.** The Challenger must reason from scan + transcript only.
+Pass all three challengers **identical inputs**:
+- Sub-phase 1 scan outputs (inferences list, coupling/stakeholder summary, borrowed invariants).
+- Q&A transcript from Sub-phase 3, verbatim.
+- **Do NOT pass the epic body text.** Each Challenger reasons from scan + transcript only.
 
-Challenger instructions:
+**Challenger 1 — Necessity**
 
-> You are an adversarial reviewer. Your job is to produce the strongest case *against* the
-> author's stated intent — the alternative epic the same evidence could equally support.
-> You have no access to the original epic body; you have only the codebase scan and the
-> Q&A transcript.
->
-> Produce a one-page counter-intent: a plausible alternative interpretation of what the
-> author should actually be doing, grounded in the evidence. Argue that the author's
-> stated intent is the wrong shape, the wrong scope, the wrong priority, or optimizing
-> for the wrong failure mode. Name the strongest alternative concretely. Cite specific
-> scan findings or Q&A excerpts.
->
-> Do not hedge. The user's rebuttal of this document is the most load-bearing content
-> in the final intent artifact.
+> You are an adversarial reviewer with one thesis: this epic should not be built, or a far
+> simpler alternative exists. Ground your argument in what the codebase scan reveals already
+> exists, what a configuration change could achieve, or what the simplest possible non-code
+> intervention looks like. Do not argue scope, timing, or architecture — argue existence.
+> Name the specific simpler alternative concretely. Cite scan findings or Q&A excerpts.
+> One page maximum. Do not hedge.
 
-Present the Challenger's output to the user:
+**Challenger 2 — Timing / Priority**
+
+> You are an adversarial reviewer with one thesis: the author is doing this at the wrong time
+> or in the wrong priority order. Ground your argument in the Q&A transcript: what does the
+> author's own premortem reveal about what they are deferring to do this? What does the scan
+> reveal about dependencies, in-flight work, or deferred debt this will collide with? Do not
+> argue what to build or how — argue when and in what order. Cite scan findings or Q&A
+> excerpts. One page maximum. Do not hedge.
+
+**Challenger 3 — Shape / Architecture**
+
+> You are an adversarial reviewer with one thesis: the author has the right problem but the
+> wrong architectural shape. Ground your argument in the scan: what existing patterns,
+> boundaries, or prior decisions make the author's proposed approach the wrong fit? Name the
+> alternative shape concretely — not "use a different approach" but "extend X instead of
+> replacing it" or "move the boundary here instead of there." This challenger also owns the
+> irreversibility angle: if the author's shape creates a harder-to-undo commitment than the
+> alternative, surface it. Cite scan findings or Q&A excerpts. One page maximum. Do not hedge.
+
+Present the three outputs to the user:
 
 ```
-A separate agent, given only the scan and your answers (not your epic body), could
-reasonably conclude THIS instead:
+Three adversarial angles — each agent saw only the scan and your answers, not your epic body:
 
-<paste Challenger output>
-
-Rebut it. Where specifically is it wrong? What does it miss? If parts of it are
-correct, which parts will you absorb into the intent document?
-```
-
-Capture the rebuttal verbatim. It becomes Section 10 of the intent document. A rebuttal that
-concedes one or more points triggers a revision round on the sections it affects.
+**[1] Necessity** — should this be built at all?
+<paste Challenger 1 output>
 
 ---
 
-**Sub-phase 6 — Stakeholder Confirmation Gate (Heavy tier only)**
+**[2] Timing / Priority** — right thing, wrong time?
+<paste Challenger 2 output>
+
+---
+
+**[3] Shape / Architecture** — right problem, wrong approach?
+<paste Challenger 3 output>
+
+---
+
+Rebut. You can address all three together if they miss in the same way, or address each
+separately. Where is each wrong? What does it miss? If any part is correct, name it — those
+concessions update the intent document.
+```
+
+Capture the rebuttal verbatim. It becomes Section 10 of the intent document, structured as:
+
+```markdown
+## 10. Challenger Rebuttal
+
+### Challenger 1 — Necessity
+<Challenger 1 output verbatim>
+
+**Rebuttal:** <author's response>
+
+### Challenger 2 — Timing / Priority
+<Challenger 2 output verbatim>
+
+**Rebuttal:** <author's response>
+
+### Challenger 3 — Shape / Architecture
+<Challenger 3 output verbatim>
+
+**Rebuttal:** <author's response>
+```
+
+A rebuttal that concedes one or more points triggers a revision round on the sections it affects.
+
+---
+
+**Sub-phase 6 — Stakeholder Confirmation Gate (Heavy tier, org mode only)**
 
 For every borrowed invariant identified in Sub-phase 1 and confirmed in Q-borrowed, require
 one of three dispositions from the author:
@@ -896,7 +983,7 @@ and do not create a draft file for that child.
 
 ---
 
-## Sign-Off Gate
+## Sign-Off Gate *(org mode only — omit in solo mode)*
 
 | Role | Name | Status | Date |
 |------|------|--------|------|
