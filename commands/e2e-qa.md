@@ -159,6 +159,8 @@ Spawn an Agent subagent (`model: "claude-sonnet-4-6"`, tools: read-only). Append
 
 > **Role:** Survey the repo's E2E test infrastructure, then design scenarios and a concrete placement plan for the Implementer. Read-only — do not write or modify any files except the output plan.
 >
+> **Before doing anything else:** read `~/.claude/guides/e2e-qa-best-practices.md`. Apply its guidance when scoping scenarios (one flow per scenario, no time-based waits, selector discipline, avoid duplicating unit coverage). The scenarios you produce go directly to the Implementer — flakiness and scope problems introduced here are harder to fix later.
+>
 > **Phase 1 — Recon (do this first, before designing anything):**
 >
 > Discover how E2E tests are structured in this repo:

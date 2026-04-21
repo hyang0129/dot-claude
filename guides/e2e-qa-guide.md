@@ -32,6 +32,8 @@ This workflow is net-positive only if debt is bounded. See **Debt ledger** below
 
 **Role:** design Playwright scenarios from the PR diff + acceptance criteria.
 
+**Before designing:** read `~/.claude/guides/e2e-qa-best-practices.md`. The scenarios you produce will be implemented directly — flakiness and scope problems introduced at design time are harder to fix later.
+
 **Input:**
 - `gh pr diff <pr>` — the actual change (not the description)
 - Acceptance criteria from the linked issue (`gh issue view <n>`)
