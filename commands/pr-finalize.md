@@ -36,19 +36,19 @@ If `GIT_ROOT` is still empty, stop and tell the user:
 **All `git` commands in this spec must run from `GIT_ROOT`** — either `cd "$GIT_ROOT"` first,
 or use `git -C "$GIT_ROOT" <command>`.
 
-Verify the `.claude-work/` scratch directory exists:
+Verify the `.agent-work/` scratch directory exists:
 ```bash
-test -d "$GIT_ROOT/.claude-work" && echo "EXISTS" || echo "MISSING"
+test -d "$GIT_ROOT/.agent-work" && echo "EXISTS" || echo "MISSING"
 ```
 If `MISSING`, stop and tell the user:
 ```
-.claude-work/ not found in this repo. Please run:
-  mkdir -p <GIT_ROOT>/.claude-work && echo '.claude-work/' >> <GIT_ROOT>/.git/info/exclude
+.agent-work/ not found in this repo. Please run:
+  mkdir -p <GIT_ROOT>/.agent-work && echo '.agent-work/' >> <GIT_ROOT>/.git/info/exclude
 Then re-run this command.
 ```
 Do not proceed until the directory exists.
 
-All artifact files produced during this session are written to `$GIT_ROOT/.claude-work/`.
+All artifact files produced during this session are written to `$GIT_ROOT/.agent-work/`.
 They are gitignored via `.git/info/exclude` and are never committed or pushed.
 
 ### Parse arguments
@@ -189,7 +189,7 @@ proceed. CI will be evaluated after the force push in Step 7b.
 
 ## Step 2 — Inventory + Remove Artifacts (Git Operator)
 
-Artifacts from `fix-issue` and `review-fix` are written to `.claude-work/` and are
+Artifacts from `fix-issue` and `review-fix` are written to `.agent-work/` and are
 gitignored via `.git/info/exclude` — they are never committed, so no `git rm` or
 removal commit is needed. This step just shows what is present and cleans the directory.
 
@@ -197,7 +197,7 @@ removal commit is needed. This step just shows what is present and cleans the di
 
 ```bash
 git -C "$GIT_ROOT" log --oneline origin/<BASE>...HEAD
-ls "$GIT_ROOT/.claude-work/" 2>/dev/null || echo "(no artifacts found)"
+ls "$GIT_ROOT/.agent-work/" 2>/dev/null || echo "(no artifacts found)"
 ```
 
 ```
@@ -209,7 +209,7 @@ ls "$GIT_ROOT/.claude-work/" 2>/dev/null || echo "(no artifacts found)"
   111aaaa  fix(review): address F-1-1, F-1-2
   222bbbb  fix(review): address F-2-1
 
-### Artifact files in .claude-work/ (<N>)
+### Artifact files in .agent-work/ (<N>)
   ISSUE_42_PLAN.md
   REVIEW_FINDINGS_1.md
   FIX_RESULT_F-1-1.md
@@ -224,7 +224,7 @@ Branch will be squash-merged — individual commit history is discarded at merge
 ### Remove artifact files
 
 ```bash
-rm -f "$GIT_ROOT/.claude-work"/*
+rm -f "$GIT_ROOT/.agent-work"/*
 ```
 
 ---
@@ -292,7 +292,7 @@ For each conflicted file:
    **Why unresolvable**: <explanation of incompatibility>
    ```
 
-5. Output `.claude-work/CONFLICT_RESOLUTION.md` with all findings.
+5. Output `.agent-work/CONFLICT_RESOLUTION.md` with all findings.
 
 6. If all conflicts resolved: `git rebase --continue`
    If any unresolvable: `git rebase --abort` and return UNRESOLVABLE status to Git Operator.
@@ -303,7 +303,7 @@ For each conflicted file:
 
 ### Git Operator: handle Conflict Resolver result
 
-- **All resolved**: read `.claude-work/CONFLICT_RESOLUTION.md`, confirm no unresolvable entries, proceed to Step 4.
+- **All resolved**: read `.agent-work/CONFLICT_RESOLUTION.md`, confirm no unresolvable entries, proceed to Step 4.
 - **Any unresolvable**: → **BLOCKER** (see Terminal States).
 
 ---
@@ -361,13 +361,13 @@ Spawn the **Senior Review Engineer** after the rebase is clean.
 
 6. If no concerns: output `No intent risks detected.`
 
-7. Write `.claude-work/REBASE_INTENT_REVIEW.md`.
+7. Write `.agent-work/REBASE_INTENT_REVIEW.md`.
 
 ---
 
 ### Git Operator: handle Senior Review Engineer result
 
-Read `.claude-work/REBASE_INTENT_REVIEW.md`.
+Read `.agent-work/REBASE_INTENT_REVIEW.md`.
 
 - **No findings / low-risk only**: accept and proceed to Step 5. Note low-risk findings in the PR comment.
 - **Medium-risk findings**: present to the user with recommended actions. Wait for user reply — user may accept or declare BLOCKER.
@@ -586,7 +586,7 @@ Build the rebase appendix:
 
 ```
 ## Acceptance criteria
-<from .claude-work/ISSUE_<number>_PLAN.md — all checked if final review was clean>
+<from .agent-work/ISSUE_<number>_PLAN.md — all checked if final review was clean>
 - [x] <criterion>
 - [x] <criterion>
 
@@ -623,7 +623,7 @@ Branch `<BRANCH>` has been rebased onto `<BASE>`.
 
 **Squash strategy**: <description>
 **Conflicts**: <N resolved, or "none">
-**Intent validation**: <clean | N low-risk notes — see .claude-work/REBASE_INTENT_REVIEW.md>
+**Intent validation**: <clean | N low-risk notes — see .agent-work/REBASE_INTENT_REVIEW.md>
 **PR CI**: all checks passing
 
 Merge via **squash merge** when ready. No further automated changes will be made to this branch.
@@ -659,7 +659,7 @@ Branch:   <BRANCH>
 Base:     <BASE>
 Squash:   <A / B / C>
 Commits:  <N before> → <N after>
-Artifacts cleaned: .claude-work/ contents cleared
+Artifacts cleaned: .agent-work/ contents cleared
 Conflicts resolved: <N, or "none">
 Intent validation: <clean / N low-risk notes>
 PR CI: all checks passing
@@ -701,7 +701,7 @@ Theirs: <quoted>
 Why: <explanation>
 
 ### Intent risk (high)
-<paste finding from .claude-work/REBASE_INTENT_REVIEW.md>
+<paste finding from .agent-work/REBASE_INTENT_REVIEW.md>
 
 ### CI regression after rebase
 Failed check: <name>

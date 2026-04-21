@@ -42,7 +42,7 @@ This workflow is net-positive only if debt is bounded. See **Debt ledger** below
 
 Diff alone is dangerous: it describes *what shipped*, not *what was asked for*. If the diff has a bug, diff-only tests assert the bug as correct. Always pair with spec.
 
-**Output:** `.claude-work/E2E_<feature>_PLAN.md`
+**Output:** `.agent-work/E2E_<feature>_PLAN.md`
 
 ```markdown
 # E2E Test Plan: <feature>
@@ -103,7 +103,7 @@ Diff alone is dangerous: it describes *what shipped*, not *what was asked for*. 
    - Intermittent → `flake-quarantine`. Do NOT report as a bug. Do NOT let Fixer touch it.
 5. For real bugs: read the source, classify `app-bug` vs `test-bug`, identify root cause. One root cause can cascade across many tests — report the cause, not each symptom.
 
-**Output:** `.claude-work/E2E_BUG_REPORT_R<N>.md`
+**Output:** `.agent-work/E2E_BUG_REPORT_R<N>.md`
 
 ```markdown
 # E2E Bug Report — Round <N>

@@ -130,19 +130,19 @@ If `GIT_ROOT` is still empty, stop and tell the user:
 **All `git` commands in this spec must run from `GIT_ROOT`** — either `cd "$GIT_ROOT"` first,
 or use `git -C "$GIT_ROOT" <command>`.
 
-Verify the `.claude-work/` scratch directory exists:
+Verify the `.agent-work/` scratch directory exists:
 ```bash
-test -d "$GIT_ROOT/.claude-work" && echo "EXISTS" || echo "MISSING"
+test -d "$GIT_ROOT/.agent-work" && echo "EXISTS" || echo "MISSING"
 ```
 If `MISSING`, stop and tell the user:
 ```
-.claude-work/ not found in this repo. Please run:
-  mkdir -p <GIT_ROOT>/.claude-work && echo '.claude-work/' >> <GIT_ROOT>/.git/info/exclude
+.agent-work/ not found in this repo. Please run:
+  mkdir -p <GIT_ROOT>/.agent-work && echo '.agent-work/' >> <GIT_ROOT>/.git/info/exclude
 Then re-run this command.
 ```
 Do not proceed until the directory exists.
 
-All artifact files produced during this session are written to `$GIT_ROOT/.claude-work/`.
+All artifact files produced during this session are written to `$GIT_ROOT/.agent-work/`.
 They are gitignored via `.git/info/exclude` and are never committed or pushed.
 
 Get current repo context:
@@ -178,7 +178,7 @@ git -C "$GIT_ROOT" worktree add "$WORKTREE_PATH" \
 WORK_DIR="$WORKTREE_PATH"
 ```
 
-In both modes, `WORK_DIR` is the directory agents and all subsequent `git` commands operate from. After this point, use `git -C "$WORK_DIR"` (not `$GIT_ROOT`) for all branch-level operations (diff, add, commit, push). Artifacts always go to `$GIT_ROOT/.claude-work/` regardless of mode — this is the shared backing store.
+In both modes, `WORK_DIR` is the directory agents and all subsequent `git` commands operate from. After this point, use `git -C "$WORK_DIR"` (not `$GIT_ROOT`) for all branch-level operations (diff, add, commit, push). Artifacts always go to `$GIT_ROOT/.agent-work/` regardless of mode — this is the shared backing store.
 
 All Planner codebase research happens from this branch (= latest `origin/<BASE>`), never from whatever branch was active before.
 
@@ -320,7 +320,7 @@ Role: read-only research. No file writes except the plan document.
 3. Search the codebase for all affected files:
    - Grep for symbols, function names, patterns mentioned in the issue
    - Read the files most likely involved
-3. Produce `.claude-work/ISSUE_<number>_PLAN.md` containing:
+3. Produce `.agent-work/ISSUE_<number>_PLAN.md` containing:
    ```markdown
    # Plan: <issue title> (#<number>)
 
@@ -359,7 +359,7 @@ Role: read-only research. No file writes except the plan document.
 4. For **Tier 1**: the plan may show a single wave with one Coder. That is correct — do not add agents for the sake of it.
 5. For **Tier 2 or Tier 3**: list open questions but do not make architecture decisions — those are deferred to the Architect if questions exist.
 
-After the Planner finishes, read `.claude-work/ISSUE_<number>_PLAN.md`.
+After the Planner finishes, read `.agent-work/ISSUE_<number>_PLAN.md`.
 
 **Post pre-implementation status to the issue:**
 ```bash
@@ -393,9 +393,9 @@ Spawn an **Architect agent** (`model: "claude-opus-4-6"`).
 
 Role: read-only research + produce ADR. No implementation file writes.
 
-1. Read `.claude-work/ISSUE_<number>_PLAN.md` and the full issue.
+1. Read `.agent-work/ISSUE_<number>_PLAN.md` and the full issue.
 2. For each open question, research options by reading relevant code, docs, and existing patterns.
-3. Produce `.claude-work/ISSUE_<number>_ADR.md`:
+3. Produce `.agent-work/ISSUE_<number>_ADR.md`:
    ```markdown
    # ADR: <issue title> (#<number>)
 
@@ -457,7 +457,7 @@ Please review and select your preferred options directly on the issue, then comm
 **Do not spawn any implementation agents until the user has responded on the issue.**
 
 Poll for the user's response by checking issue comments. When a comment containing "APPROVED" or "REJECT" is found:
-- **APPROVED**: read the checkbox states from the ADR comment to determine which options were selected. **Before proceeding, verify that every decision has exactly one option checked.** If any decision has zero or multiple boxes checked, post a follow-up comment listing the unresolved decisions and wait for another APPROVED comment — do not treat partial approval as complete. Once all decisions are resolved, update `.claude-work/ISSUE_<number>_ADR.md` status to `ACCEPTED` and revise per any overrides or "Other" comments.
+- **APPROVED**: read the checkbox states from the ADR comment to determine which options were selected. **Before proceeding, verify that every decision has exactly one option checked.** If any decision has zero or multiple boxes checked, post a follow-up comment listing the unresolved decisions and wait for another APPROVED comment — do not treat partial approval as complete. Once all decisions are resolved, update `.agent-work/ISSUE_<number>_ADR.md` status to `ACCEPTED` and revise per any overrides or "Other" comments.
 - **REJECT**: stop and report to the user in chat. Do not proceed with implementation.
 
 **Post approved decisions to the issue:**
@@ -478,14 +478,14 @@ EOF
 
 ## Step 3 — Implementation
 
-Use the task list from `.claude-work/ISSUE_<number>_PLAN.md` (updated with ADR outcomes if Tier 3).
+Use the task list from `.agent-work/ISSUE_<number>_PLAN.md` (updated with ADR outcomes if Tier 3).
 
 For each task, spawn the assigned agent with the full task spec. Use `model: "claude-sonnet-4-6"` for Coder, Tester, and Integrator agents; use `model: "claude-opus-4-6"` for Reviewer agents:
 
 ```
 Issue: #<number> — <title>
-Plan: .claude-work/ISSUE_<number>_PLAN.md
-ADR: .claude-work/ISSUE_<number>_ADR.md (Tier 3 only, else N/A)
+Plan: .agent-work/ISSUE_<number>_PLAN.md
+ADR: .agent-work/ISSUE_<number>_ADR.md (Tier 3 only, else N/A)
 
 Objective: [from plan task list]
 
@@ -597,7 +597,7 @@ Role: read-only. Do NOT make any file changes.
    **Fix**: concrete recommendation
    ```
 4. Categories to check: correctness, missing tests, security, edge cases, scope creep (changes beyond the issue), breaking changes.
-5. Output `.claude-work/ISSUE_<number>_REVIEW.md`.
+5. Output `.agent-work/ISSUE_<number>_REVIEW.md`.
 
 After the Reviewer finishes:
 - **Critical or major findings**: apply targeted fixes, re-run binary checks, **commit the fixes**, then re-run Reviewer (max 2 review iterations).
@@ -714,7 +714,7 @@ After the PR is open, spawn a **Documentation Agent** (`model: "claude-sonnet-4-
 
 Role: read-only research + agent doc updates + PR update. Do not modify any source files.
 
-> **Intermediate artifacts:** Writing intermediate files before committing to git is not preferred. If the agent does need to stage notes or drafts, it must write them under `.claude-work/` (e.g. `.claude-work/ISSUE_<number>_doc_draft.md`). Never write scratch files outside `.claude-work/`.
+> **Intermediate artifacts:** Writing intermediate files before committing to git is not preferred. If the agent does need to stage notes or drafts, it must write them under `.agent-work/` (e.g. `.agent-work/ISSUE_<number>_doc_draft.md`). Never write scratch files outside `.agent-work/`.
 
 1. Read every file changed in this branch:
    ```bash
@@ -722,7 +722,7 @@ Role: read-only research + agent doc updates + PR update. Do not modify any sour
    git diff <BASE>...HEAD
    ```
 2. Read the original issue body and comments in full.
-3. Read `.claude-work/ISSUE_<number>_PLAN.md` and (if present) `.claude-work/ISSUE_<number>_ADR.md`.
+3. Read `.agent-work/ISSUE_<number>_PLAN.md` and (if present) `.agent-work/ISSUE_<number>_ADR.md`.
 4. Read the surrounding context for every changed file — not just the diff lines, but the full function or class that was modified, and any callers or dependents one level up.
 
 **Agent-facing documentation (do this before the PR update):**
@@ -802,7 +802,7 @@ Tier <N> — <Planner → Coder → Reviewer | parallel Coders + Integrator | DA
 
 ## Acceptance criteria
 
-<from .claude-work/ISSUE_<number>_PLAN.md>
+<from .agent-work/ISSUE_<number>_PLAN.md>
 - [x] <criterion>
 - [x] <criterion>
 

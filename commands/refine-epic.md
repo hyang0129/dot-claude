@@ -128,12 +128,12 @@ fi
 
 If `GIT_ROOT` is set, verify the scratch directory exists before spawning anything:
 ```bash
-test -d "$GIT_ROOT/.claude-work" && echo "EXISTS" || echo "MISSING"
+test -d "$GIT_ROOT/.agent-work" && echo "EXISTS" || echo "MISSING"
 ```
 If `MISSING`, stop and tell the user:
 ```
-.claude-work/ not found in this repo. Please run:
-  mkdir -p <GIT_ROOT>/.claude-work && echo '.claude-work/' >> <GIT_ROOT>/.git/info/exclude
+.agent-work/ not found in this repo. Please run:
+  mkdir -p <GIT_ROOT>/.agent-work && echo '.agent-work/' >> <GIT_ROOT>/.git/info/exclude
 Then re-run this command.
 ```
 Do not proceed until the directory exists.
@@ -144,7 +144,7 @@ as `[UNVERIFIED — no codebase]`. Report this path to the user in the final sum
 ### Output directory
 
 Set `EPIC_DIR`:
-- With git root: `$GIT_ROOT/.claude-work/EPIC_<slug>-<number>/`
+- With git root: `$GIT_ROOT/.agent-work/EPIC_<slug>-<number>/`
 - Without git root: `/tmp/EPIC_<slug>-<number>/`
 
 where `<slug>` is a 3–4 word kebab-case summary of the epic title or description, and `<number>`
@@ -162,7 +162,7 @@ test -d "$EPIC_DIR" && echo "EXISTS" || echo "MISSING"
 
 If the directory exists, list its contents and ask:
 ```
-Found existing epic work: .claude-work/EPIC_<slug>-<number>/
+Found existing epic work: .agent-work/EPIC_<slug>-<number>/
   intent.md          (present / missing)
   index.md           (present / missing)
   child-1-<slug>.md

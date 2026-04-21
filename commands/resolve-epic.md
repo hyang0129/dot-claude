@@ -63,14 +63,14 @@ Role: repository setup only. No source file changes, no implementation.
 
 2. Resolve `GIT_ROOT` using the same dev-container-safe logic as `/fix-issue`.
 
-3. Verify the `.claude-work/` scratch directory exists:
+3. Verify the `.agent-work/` scratch directory exists:
    ```bash
-   test -d "$GIT_ROOT/.claude-work" && echo "EXISTS" || echo "MISSING"
+   test -d "$GIT_ROOT/.agent-work" && echo "EXISTS" || echo "MISSING"
    ```
    If `MISSING`, stop and tell the user:
    ```
-   .claude-work/ not found in this repo. Please run:
-     mkdir -p <GIT_ROOT>/.claude-work && echo '.claude-work/' >> <GIT_ROOT>/.git/info/exclude
+   .agent-work/ not found in this repo. Please run:
+     mkdir -p <GIT_ROOT>/.agent-work && echo '.agent-work/' >> <GIT_ROOT>/.git/info/exclude
    Then re-run this command.
    ```
    Do not proceed until the directory exists.
@@ -123,9 +123,9 @@ Role: state detection only. No source file changes, no git changes, no issue cre
             intent_comment_url: (.comments[] | select(.body | test("<!-- INTENT_DOC -->")) | .url) // ""}'
    ```
 
-2. Locate the refine-epic scratch directory (matches `$GIT_ROOT/.claude-work/EPIC_*-<number>/`):
+2. Locate the refine-epic scratch directory (matches `$GIT_ROOT/.agent-work/EPIC_*-<number>/`):
    ```bash
-   ls -d "$GIT_ROOT"/.claude-work/EPIC_*-<number>/ 2>/dev/null | head -1
+   ls -d "$GIT_ROOT"/.agent-work/EPIC_*-<number>/ 2>/dev/null | head -1
    ```
    If found, record as `EPIC_DIR` and check for `intent.md`, `intent-compressed.md`, `index.md`,
    and `child-*.md` files.
@@ -191,7 +191,7 @@ The decomposition of an epic into sub-issues is a critical decision that shapes 
 
 ### Subagent Output Rule
 
-**Every subagent must return ONLY its HANDOFF block — nothing else.** Write all verbose output, summaries, and analysis to `.claude-work/` files. The orchestrator parses HANDOFF blocks only; free-form agent output is never read by the orchestrator. Violating this rule bloats the orchestrator's context window and degrades performance across long epics.
+**Every subagent must return ONLY its HANDOFF block — nothing else.** Write all verbose output, summaries, and analysis to `.agent-work/` files. The orchestrator parses HANDOFF blocks only; free-form agent output is never read by the orchestrator. Violating this rule bloats the orchestrator's context window and degrades performance across long epics.
 
 ### Subagent Context Bootstrap
 
@@ -219,7 +219,7 @@ Role: read-only codebase research. No file writes except the research document.
    - `docs/agent_index.md` at `$GIT_ROOT`
    - If no agent index was found at `docs/agent_index.md`, glob for `**/agent_index.md` at `$GIT_ROOT` and read any match.
 3. Search the codebase exhaustively for all areas mentioned in the epic — grep for symbols, read affected files, map dependencies between them.
-4. Produce `.claude-work/EPIC_<number>_RESEARCH.md`:
+4. Produce `.agent-work/EPIC_<number>_RESEARCH.md`:
    ```markdown
    # Epic Research: <title> (#<number>)
 
@@ -239,7 +239,7 @@ Role: read-only codebase research. No file writes except the research document.
 
 ### Phase 2b — Planning Team Debate (parallel, all `model: "claude-opus-4-6"`)
 
-Spawn 4-5 agents in parallel, each with a different perspective. All receive the epic issue body and `.claude-work/EPIC_<number>_RESEARCH.md` as input.
+Spawn 4-5 agents in parallel, each with a different perspective. All receive the epic issue body and `.agent-work/EPIC_<number>_RESEARCH.md` as input.
 
 | Agent | Perspective | Key question |
 |-------|-------------|-------------|
@@ -255,7 +255,7 @@ Each agent produces a **200-300 word position paper** (`model: "claude-opus-4-6"
 3. One risk or concern the other perspectives might miss
 4. Their recommended QA checks for the final epic PR
 
-Output: `.claude-work/EPIC_<number>_POSITION_<role>.md` for each agent.
+Output: `.agent-work/EPIC_<number>_POSITION_<role>.md` for each agent.
 
 ### Phase 2c — Synthesis Agent (`model: "claude-opus-4-6"`)
 
@@ -263,7 +263,7 @@ After all position papers are complete, spawn a **Synthesis Agent** that reads a
 
 Role: read all position papers, resolve disagreements, produce the canonical plan.
 
-1. Read all `.claude-work/EPIC_<number>_POSITION_*.md` files.
+1. Read all `.agent-work/EPIC_<number>_POSITION_*.md` files.
 2. Identify areas of agreement and disagreement across the planning team.
 3. For disagreements, choose the approach that best balances:
    - Clean sub-issue boundaries (Decomposition Architect)
@@ -273,7 +273,7 @@ Role: read all position papers, resolve disagreements, produce the canonical pla
    - Scope discipline (Scope Guardian)
 4. Document why dissenting views were not adopted (briefly).
 
-Produce `.claude-work/EPIC_<number>_DECOMPOSITION.md`:
+Produce `.agent-work/EPIC_<number>_DECOMPOSITION.md`:
 
 ```markdown
 # Epic Decomposition: <title> (#<number>)
@@ -352,9 +352,9 @@ If the Synthesis Agent handoff returned `HAS_ARCH_QUESTIONS=true`, spawn an **Ar
 
 Same role and output format as the `/fix-issue` Step 2b Architect, but scoped to the entire epic:
 
-1. Read `.claude-work/EPIC_<number>_DECOMPOSITION.md` and the full epic issue.
+1. Read `.agent-work/EPIC_<number>_DECOMPOSITION.md` and the full epic issue.
 2. For each architecture question, research options by reading relevant code, docs, and existing patterns.
-3. Produce `.claude-work/EPIC_<number>_ADR.md` (same ADR format as `/fix-issue`).
+3. Produce `.agent-work/EPIC_<number>_ADR.md` (same ADR format as `/fix-issue`).
 4. Post the ADR as checkboxes on the epic issue (same format as `/fix-issue` Step 2b) using `gh issue comment`.
 5. Return handoff:
    ```
@@ -382,8 +382,8 @@ Spawn an **Issue Creation Agent** (`model: "claude-sonnet-4-6"`) to create the s
 
 Role: create GitHub issues and post comments. No source file changes, no git operations.
 
-1. Read `.claude-work/EPIC_<number>_DECOMPOSITION.md` for the sub-issue list.
-2. Read `.claude-work/EPIC_<number>_ADR.md` if it exists.
+1. Read `.agent-work/EPIC_<number>_DECOMPOSITION.md` for the sub-issue list.
+2. Read `.agent-work/EPIC_<number>_ADR.md` if it exists.
 3. For each sub-issue in the decomposition, create a GitHub issue:
    ```bash
    gh issue create --repo <REPO> \
@@ -566,7 +566,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
 
    Role: execute smoke tests, evaluate results, report pass/fail. No source file changes.
 
-   1. Read `.claude-work/EPIC_<number>_DECOMPOSITION.md` to find the smoke test commands for this sub-issue.
+   1. Read `.agent-work/EPIC_<number>_DECOMPOSITION.md` to find the smoke test commands for this sub-issue.
    2. Read the list of all files changed on the epic branch so far:
       ```bash
       git diff "origin/$DEV_BASE"..."$EPIC_BRANCH" --name-only
@@ -585,7 +585,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
       #    (not the full suite — just modules affected by completed sub-issues)
       <targeted test command covering files changed on the epic branch>
       ```
-   4. Produce `.claude-work/EPIC_<number>_SMOKE_<N>.md`:
+   4. Produce `.agent-work/EPIC_<number>_SMOKE_<N>.md`:
       ```markdown
       ## Smoke Test Results — after sub-issue <N> (#<sub_issue_number>)
 
@@ -631,7 +631,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
 
    Role: read-only root-cause analysis. No file changes.
 
-   1. Read `.claude-work/EPIC_<number>_SMOKE_<N>.md` (the Smoke Test Runner's report) in full.
+   1. Read `.agent-work/EPIC_<number>_SMOKE_<N>.md` (the Smoke Test Runner's report) in full.
    2. Read the diff of the most recently merged sub-issue:
       ```bash
       git log --oneline -5  # identify the squash-merge commit
@@ -642,7 +642,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
       ```bash
       git diff "origin/$DEV_BASE"..."$EPIC_BRANCH"
       ```
-   5. Produce `.claude-work/EPIC_<number>_SMOKE_DIAG_<N>.md`:
+   5. Produce `.agent-work/EPIC_<number>_SMOKE_DIAG_<N>.md`:
       ```markdown
       ## Integration Failure Diagnosis — after sub-issue <N>
 
@@ -669,10 +669,10 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
 
    Role: apply the targeted fix. Scope-limited.
 
-   1. Read `.claude-work/EPIC_<number>_SMOKE_DIAG_<N>.md`.
+   1. Read `.agent-work/EPIC_<number>_SMOKE_DIAG_<N>.md`.
    2. Apply the recommended fix. **Scope**: only files listed in the diagnosis.
    3. Do not refactor, do not fix unrelated issues, do not modify test expectations unless the test itself is wrong.
-   4. Produce `.claude-work/EPIC_<number>_SMOKE_FIX_<N>.md`:
+   4. Produce `.agent-work/EPIC_<number>_SMOKE_FIX_<N>.md`:
       ```markdown
       ## Integration Fix — cycle <FIX_CYCLE>
 
@@ -730,7 +730,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
    <test output>
 
    ### Diagnosis
-   <summary from .claude-work/EPIC_<number>_SMOKE_DIAG_<N>.md>
+   <summary from .agent-work/EPIC_<number>_SMOKE_DIAG_<N>.md>
 
    ### Fix attempts (<MAX_FIX_CYCLES> cycles)
    <summary of what each cycle tried and why it didn't fully resolve>
@@ -794,7 +794,7 @@ Role: execute tests and report results. No source file changes.
    <lint command if applicable>
    <test command — full suite, not just unit>
    ```
-3. Produce `.claude-work/EPIC_<number>_FULL_TEST.md`:
+3. Produce `.agent-work/EPIC_<number>_FULL_TEST.md`:
    ```markdown
    ## Full Validation Results — epic branch
 
@@ -836,7 +836,7 @@ Role: read-only acceptance criteria verification. No file changes.
    git diff "origin/$DEV_BASE"..."$EPIC_BRANCH"
    ```
 3. For each acceptance criterion, verify it is met by the implementation. Produce a checklist with evidence (file paths, function names, test names).
-4. Output `.claude-work/EPIC_<number>_VERIFICATION.md`.
+4. Output `.agent-work/EPIC_<number>_VERIFICATION.md`.
 5. Return ONLY this HANDOFF block (all detail goes to the verification file):
    ```
    HANDOFF
@@ -865,7 +865,7 @@ Role: read-only research + PR body creation. No source file modifications.
    git diff "origin/$DEV_BASE"..."origin/$EPIC_BRANCH"
    ```
 2. Read the original epic issue, all sub-issues, and their PRs.
-3. Read `.claude-work/EPIC_<number>_DECOMPOSITION.md`, `.claude-work/EPIC_<number>_ADR.md` (if exists), and `.claude-work/EPIC_<number>_VERIFICATION.md`.
+3. Read `.agent-work/EPIC_<number>_DECOMPOSITION.md`, `.agent-work/EPIC_<number>_ADR.md` (if exists), and `.agent-work/EPIC_<number>_VERIFICATION.md`.
 4. Collect all sub-issue numbers from the decomposition (or the tracking comment on the epic issue). You will need them to emit `Closes` keywords for each one.
 5. Produce the PR body.
 
@@ -916,7 +916,7 @@ Closes #<sub_num2>
 
 ## Acceptance Criteria
 
-<From .claude-work/EPIC_<number>_VERIFICATION.md>
+<From .agent-work/EPIC_<number>_VERIFICATION.md>
 - [x] <criterion — with evidence>
 - [x] <criterion — with evidence>
 
@@ -988,7 +988,7 @@ See PR for full checklist — human review required before merge into <DEV_BASE>
 ## Constraints
 
 - **The orchestrator only delegates and reads HANDOFF blocks.** It never runs git commands, gh commands, bash commands, or modifies any files. All actions (branch creation, issue creation, merging, testing, committing, pushing, posting comments) are performed by spawned subagents. The orchestrator's job is to: (1) spawn agents with the right instructions and context, (2) parse their HANDOFF blocks, (3) decide what to do next based on those results.
-- **Subagents must return ONLY their HANDOFF block and nothing else.** All summaries, explanations, and verbose output must go to `.claude-work/` files. The orchestrator never reads full artifact files — it only parses compact HANDOFF blocks. This is critical for keeping the orchestrator's context window clean across a long multi-sub-issue run.
+- **Subagents must return ONLY their HANDOFF block and nothing else.** All summaries, explanations, and verbose output must go to `.agent-work/` files. The orchestrator never reads full artifact files — it only parses compact HANDOFF blocks. This is critical for keeping the orchestrator's context window clean across a long multi-sub-issue run.
 - One epic branch per epic. One epic PR into `<DEV_BASE>`.
 - Sub-issue PRs target the epic branch, not `<DEV_BASE>`.
 - Sub-issue PRs are squash-merged into the epic branch automatically after `/resolve-issue` succeeds.

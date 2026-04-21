@@ -70,7 +70,7 @@ Spawn an Agent subagent (`model: "claude-opus-4-6"`, tools: read-only). Append t
 > - Copy and user-facing strings
 > - Integration points (does this feature interact correctly with adjacent features?)
 >
-> **Output:** Write `.claude-work/E2E_<feature>_QA_CHECKLIST.md`:
+> **Output:** Write `.agent-work/E2E_<feature>_QA_CHECKLIST.md`:
 >
 > ```markdown
 > # QA Checklist: <feature> — PR #<n>
@@ -123,7 +123,7 @@ Spawn an Agent subagent (`model: "claude-opus-4-6"`, tools: read-only). Append t
 > - Requires copy/content review
 > - Automation would only assert the current behavior, not whether the behavior is *correct from a user perspective*
 >
-> **Output:** Write `.claude-work/E2E_<feature>_QA_SPLIT.md`:
+> **Output:** Write `.agent-work/E2E_<feature>_QA_SPLIT.md`:
 >
 > ```markdown
 > # QA Split: <feature> — PR #<n>
@@ -192,7 +192,7 @@ Spawn an Agent subagent (`model: "claude-sonnet-4-6"`, tools: read-only). Append
 >
 > **Critical:** the auto-testable items from the QA split are your primary input — design one scenario per item. Do not invent scenarios beyond the split. Diff alone is dangerous — it describes *what shipped*, not *what was asked for*. If the diff has a bug, diff-only tests assert the bug as correct. Always pair diff with spec. Disagreement between diff and spec = bug, not test material.
 >
-> **Output:** Write `.claude-work/E2E_<feature>_PLAN.md` with this structure:
+> **Output:** Write `.agent-work/E2E_<feature>_PLAN.md` with this structure:
 >
 > ```markdown
 > # E2E Test Plan: <feature>
@@ -299,7 +299,7 @@ Spawn an Agent subagent (`model: "claude-sonnet-4-6"`). Append:
 >    - Intermittent → `flake-quarantine`. Do NOT report as a bug. Do NOT let Fixer touch it.
 > 5. Classify real bugs as `app-bug` (production code is wrong) or `test-bug` (test assertion or setup is wrong). One root cause often cascades across many tests — report the cause once, not per symptom.
 >
-> **Output:** Write `.claude-work/E2E_BUG_REPORT_R<round>.md`:
+> **Output:** Write `.agent-work/E2E_BUG_REPORT_R<round>.md`:
 >
 > ```markdown
 > # E2E Bug Report — Round <N>
@@ -338,7 +338,7 @@ Wait. If `ALL_PASSED=true` or (`APP_BUGS=0` and `TEST_BUGS=0`), break out of the
 
 If `round == --max-rounds` and (`APP_BUGS > 0` or `TEST_BUGS > 0`), **stop execution entirely**. Do not spawn Reporter. Tell the user:
 
-> "E2E QA halted: max rounds (3) exhausted with N outstanding bug(s). Review `.claude-work/E2E_BUG_REPORT_R<round>.md`, fix the bugs manually, then re-run `/e2e-qa`."
+> "E2E QA halted: max rounds (3) exhausted with N outstanding bug(s). Review `.agent-work/E2E_BUG_REPORT_R<round>.md`, fix the bugs manually, then re-run `/e2e-qa`."
 
 ### 3b. Fixer (skipped on the final round)
 

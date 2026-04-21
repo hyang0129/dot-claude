@@ -27,22 +27,22 @@ fi
 If `GIT_ROOT` is still empty, stop:
 > "Could not find a git repository. Run this command from inside a repo."
 
-Verify the `.claude-work/` scratch directory exists:
+Verify the `.agent-work/` scratch directory exists:
 ```bash
-test -d "$GIT_ROOT/.claude-work" && echo "EXISTS" || echo "MISSING"
+test -d "$GIT_ROOT/.agent-work" && echo "EXISTS" || echo "MISSING"
 ```
 If `MISSING`, stop and tell the user:
 ```
-.claude-work/ not found in this repo. Please run:
-  mkdir -p <GIT_ROOT>/.claude-work && echo '.claude-work/' >> <GIT_ROOT>/.git/info/exclude
+.agent-work/ not found in this repo. Please run:
+  mkdir -p <GIT_ROOT>/.agent-work && echo '.agent-work/' >> <GIT_ROOT>/.git/info/exclude
 Then re-run this command.
 ```
 Do not proceed until the directory exists.
 
 Create the agent-index subdirectory:
 ```bash
-mkdir -p "$GIT_ROOT/.claude-work/agent-index"
-WORK="$GIT_ROOT/.claude-work/agent-index"
+mkdir -p "$GIT_ROOT/.agent-work/agent-index"
+WORK="$GIT_ROOT/.agent-work/agent-index"
 ```
 
 Check if `docs/agent_index.md` already exists:
@@ -755,7 +755,7 @@ Gaps
 
 Validation
   Spot checks passed:   <N>/3
-  Warnings:             <N> (see .claude-work/agent-index/validation-warnings.txt)
+  Warnings:             <N> (see .agent-work/agent-index/validation-warnings.txt)
 
 The Planner agent in /fix-issue will now read docs/agent_index.md before planning
 any new implementation. Keep it current: the Documentation Agent in /fix-issue
