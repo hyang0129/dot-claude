@@ -46,25 +46,26 @@ Input detection:
 - Matches `^https?://github\.com/` → extract `owner/repo` and issue number from URL.
 - Otherwise → free-form description.
 
-Optional flag: `--org` activates org mode (see Mode below).
+Optional flag: `--org` activates org mode (multi-team coordination protocol).
 
 ---
 
 ## Mode
 
-Default: **solo**. Pass `--org` after the epic argument to activate org mode.
+Default: **solo** — assumes single-author ownership. This skill is written for solo mode.
 
-- **solo** — assumes single-author ownership. Adjacent-team coordination, stakeholder
-  confirmation gates, and sign-off tables are skipped. Questions are compressed to premortem
-  + Q-success + scan-calibrated follow-ups. Multi-angle Challenger pass (3 parallel agents)
-  replaces the single Challenger.
-- **org** — full protocol. Stakeholder matrix, borrowed-invariant dispositions, Sub-phase 6
-  confirmation gate, sign-off table, and all required questions. Single Challenger is replaced
-  by the same 3-agent multi-angle pass (applies to both modes).
+*Org mode (`--org`): see [refine-epic-org.md](refine-epic-org.md).* It defines deltas applied
+over solo mode: stakeholder matrix, borrowed-invariant confirmation gate, sign-off table,
+additional required questions. Read that file only when `--org` is set.
 
 ---
 
-## Setup
+## Step 0 — Setup
+
+**Turn 1 — initialize task tracking.** Before doing anything else, call `TodoWrite` to
+initialize your task list with entries for Steps 0–6 (marking Step 0 `in_progress`). This
+loads the `TodoWrite` schema early so subsequent updates don't trigger a cache-invalidating
+`ToolSearch` mid-session.
 
 ### Repo detection
 
@@ -72,8 +73,8 @@ If `epic` is `owner/repo#number` or a full URL, extract `owner/repo` directly �
 confirmation needed. Set `REPO=<owner/repo>` and proceed.
 
 If `epic` is a **free-form description**, detect the repo the same way as a bare number (below),
-then confirm with the user before proceeding. The GitHub epic issue will be created after the
-intent document is written (see Step 2 — Publish).
+then confirm with the user before proceeding. The GitHub epic issue will be created by the
+Publisher subagent (see Step 2 — Publish).
 
 If `epic` is a bare number, detect the repo:
 ```bash
@@ -101,7 +102,7 @@ Wait for the user to confirm or correct. Then set `REPO=<owner/repo>`.
 gh issue view <number> --repo <REPO> --json number,title,body,labels,comments
 ```
 
-Also fetch any issues already linked as children so the Decomposer does not re-propose them:
+Also fetch any issues already linked as children so they can be referenced (not re-proposed):
 
 ```bash
 gh issue list --repo <REPO> \
@@ -150,17 +151,34 @@ Set `EPIC_DIR`:
 where `<slug>` is a 3–4 word kebab-case summary of the epic title or description, and `<number>`
 is the issue number (or a short hash for free-form).
 
+After Step 0: mark Step 0 done, Step 1 in_progress.
+
 ---
 
 ## Step 1 — Resume Check
 
-Before spawning anything, check whether a prior decomposition exists:
+Before spawning anything, check whether a prior run's artifacts exist:
 
 ```bash
 test -d "$EPIC_DIR" && echo "EXISTS" || echo "MISSING"
 ```
 
-If the directory exists, list its contents and ask:
+If the directory exists, list its contents and check GitHub for a prior publish:
+
+```bash
+gh issue view <number> --repo <REPO> --json comments -q '.comments[] | select(.body | startswith("<!-- INTENT_DOC -->"))' | head -1
+```
+
+Decide state:
+
+- **Partial publish detected** — `intent.md` exists locally but no `<!-- INTENT_DOC -->` comment
+  on the epic. Offer: "finish publishing" (re-spawn the Publisher) or "start over."
+- **Full publish detected** — `intent.md` exists locally AND the intent comment is posted.
+  Offer standard resume options below.
+- **Neither** — treat as fresh start.
+
+Resume options when full state is present:
+
 ```
 Found existing epic work: .agent-work/EPIC_<slug>-<number>/
   intent.md          (present / missing)
@@ -170,18 +188,19 @@ Found existing epic work: .agent-work/EPIC_<slug>-<number>/
   ...
 
 Resume options:
-  (r) resume decomposition — skip Clarifier, go straight to Decomposer (requires intent.md)
-  (i) re-run intent validation only — redo Clarifier, keep existing child drafts
+  (r) resume decomposition — skip Step 2, go straight to Step 3 (requires intent.md)
+  (i) re-run intent validation only — redo Step 2, keep existing child drafts
   (s) start over — delete everything and begin from Step 2
 ```
 
-- **Resume (r)**: if `intent.md` is present, skip Step 2 (Clarifier) and spawn the Decomposer
-  directly. If `intent.md` is missing, treat as start-over and warn the user.
-  If `index.md` is also present, skip to Step 4 (present decomposition) — do not re-spawn
-  the Decomposer agent.
-- **Re-run intent (i)**: delete `intent.md` only, re-run Step 2, keep all child draft files.
+- **Resume (r)**: if `intent.md` present, skip Step 2 and proceed to Step 3. If `index.md`
+  and child drafts also present, skip to Step 4.
+- **Re-run intent (i)**: delete `intent.md` and `intent-compressed.md` only, re-run Step 2,
+  keep all child draft files.
 - **Start over (s)**: delete the directory contents and continue to Step 2.
-- **Free-form mode** (no issue number): skip this check entirely.
+- **Free-form mode** (no issue number and no prior publish): skip this check entirely.
+
+After Step 1: mark Step 1 done, Step 2 in_progress.
 
 ---
 
@@ -192,20 +211,21 @@ is not under-documentation — it is capturing an intent that diverges from the 
 actual intent, or from the author's *considered* intent (vs. their reflexive one). Every
 compounding misalignment in downstream child issues traces back to a gap here.
 
-Before spawning the Clarifier, tell the user:
+Before starting, tell the user:
 
 ```
-Starting intent validation. I'll scan the codebase and map stakeholders first, then ask
-scan-calibrated questions (not abstract tradeoff questions). A separate Challenger agent
-will then produce the strongest counter-intent the evidence also supports, and you'll
-rebut it. The rebuttal is the most load-bearing content in the final document.
+Starting intent validation. I'll scan the codebase first, then ask scan-calibrated questions
+(not abstract tradeoff questions). Three Challenger agents will then produce the strongest
+counter-intent the evidence also supports, and you'll rebut it. The rebuttal is the most
+load-bearing content in the final document.
 
 Expect: 1–3 interactive rounds depending on epic tier (Lite / Standard / Heavy).
 ```
 
-**Run the Clarifier process directly in this session** — do NOT spawn a subagent for this step.
-The Clarifier requires multiple interactive Q&A rounds with the real user; a subagent cannot
-do that. You are the Clarifier for Step 2.
+**Run the Q&A rounds directly in this session — do NOT delegate Sub-phases 3–5 to a subagent.**
+The Clarifier requires multiple interactive Q&A rounds with the real user; a subagent cannot do
+that. You are the Clarifier for Step 2. However, the Sub-phase 1 codebase scan **SHOULD** be
+delegated to a Sonnet subagent to keep tool-result volume out of ROOT's cache.
 
 ### Clarifier process
 
@@ -213,52 +233,39 @@ Role: elicit intent via evidence-grounded questions, detect anchoring and bluffi
 disconfirmation via a Challenger pass, produce a tier-appropriate intent artifact. No source
 file writes. No branch, commit, or PR creation.
 
-**Context bootstrap (do this before anything else):**
+**Context bootstrap:**
 1. Read `~/.claude/CLAUDE.md` and `$GIT_ROOT/CLAUDE.md` if they exist.
 2. If `GIT_ROOT` is unavailable, Sub-phase 1 degrades to vocabulary-only. Mark scan outputs
    `SKIPPED — no codebase` and proceed. Lite tier becomes unavailable; default to Standard.
 
 ---
 
-**Sub-phase 1 — Evidence First: Codebase + Stakeholder Scan**
+**Sub-phase 1 — Evidence First: Codebase Scan**
 
-Before asking the user any question, scan the codebase and surface the evidence that will
-calibrate every subsequent question. The epistemic principle: anchoring is hard to undo. Ask
-the user about concretes, not abstractions.
+Delegate to a Sonnet subagent (`model: "claude-sonnet-4-6"`) so tool-result volume stays off
+ROOT's cache. Pass it the epic body + these scan targets:
 
-**Scan target 1 — Existing domain implementations.** Grep for key nouns and verbs from the
-epic title/body. Does this capability partially exist? Is the epic extending or replacing?
+- **Scan target 1 — Existing domain implementations.** Grep key nouns and verbs from epic
+  title/body. Does this capability partially exist? Is the epic extending or replacing?
+- **Scan target 2 — Rejection signals.** Commented-out code, FIXME/TODO notes naming
+  alternatives, dependency manifests showing added-then-removed libraries. Surface evidence.
+- **Scan target 3 — Coarse module boundaries.** Top-level packages/directories the epic will
+  touch. Name only.
+- **Scan target 4 — Coupling map.** For every symbol or file the epic will modify, grep for
+  call sites *outside* the defining module. Produce: `<module> → N external call sites`.
+- **Scan target 5 — Borrowed invariants.** Contracts the epic will load-bear on: schemas, SLOs
+  in code/config, rate limits, auth boundaries, retention policies. In solo mode, flag only
+  invariants owned by **external** systems (third-party APIs, vendor contracts, platform
+  SLOs). Internally-owned invariants are treated as confirmed — the author is the owner.
 
-**Scan target 2 — Rejection signals.** Commented-out code, FIXME/TODO notes naming
-alternatives, dependency manifests showing added-then-removed libraries. Surface as evidence,
-do not interpret.
-
-**Scan target 3 — Coarse module boundaries.** Top-level packages/directories the epic will
-touch. Name only — do not read internals yet.
-
-**Scan target 4 — Coupling map.** For every symbol or file the epic will modify, grep for
-call sites *outside* the defining module — those are downstream consumers. Produce a
-coupling summary: `<module> → N external call sites`.
-
-*Org mode only:* also read `CODEOWNERS`. Identify the owning team per module and extend the
-summary to: `<module> → owner → N external consumers`. This owner column drives the
-stakeholder matrix and Sub-phase 6.
-
-**Scan target 5 — Borrowed invariants.** Identify contracts this epic will load-bear on:
-schemas, SLOs documented in code or config, rate limits, auth boundaries, retention policies.
-These are constraints the epic depends on but does not own.
-
-*Solo mode:* flag only invariants owned by external systems (third-party APIs, vendor
-contracts, platform SLOs you do not control). Internally-owned invariants are treated as
-confirmed by default — the author is the owner.
-
-Produce two working artifacts (not output files yet — surfaced inline during Sub-phase 3):
+Scan subagent returns two working artifacts (not files yet — surfaced inline during Sub-phase 3):
 
 1. **Inferences list.** Up to 5 named inferences, prioritized by "would change the shape of
    at least one child issue if wrong." Format: `[INFER] <claim>. Confirm or correct.`
-2. **Coupling / stakeholder summary.** Solo mode: coupling summary per module + any external
-   borrowed invariants. Org mode: full stakeholder matrix (teams + surfaces owned) + all
-   borrowed invariants with owners.
+2. **Coupling summary + external borrowed invariants.**
+
+*Org mode:* see [refine-epic-org.md](refine-epic-org.md) for CODEOWNERS lookup and stakeholder
+matrix additions.
 
 ---
 
@@ -267,23 +274,18 @@ Produce two working artifacts (not output files yet — surfaced inline during S
 From the scan, assess epic size and pick a tier. State the choice to the user with reasoning
 drawn from the scan; allow one override.
 
-**Solo mode** (default):
 - **Lite** — touches ≤1 module, <1 week of work, ≤2 child issues.
 - **Standard** — 2–3 modules, 1–4 weeks, 3–6 child issues.
-- **Heavy** — >3 modules, or >4 weeks, or >6 child issues, or Sub-phase 1 found a rejection
+- **Heavy** — >3 modules, OR >4 weeks, OR >6 child issues, OR Sub-phase 1 found a rejection
   signal against a library currently in production.
 
-**Org mode** (`--org`):
-- **Lite** — touches ≤1 module, no adjacent team owns affected code, <1 week of work, ≤2 child issues.
-- **Standard** — 2–3 modules, 1–2 adjacent teams affected, 1–4 weeks, 3–6 child issues.
-- **Heavy** — >3 modules, or >2 adjacent teams affected, or >4 weeks, or >6 child issues, or
-  Sub-phase 1 found a rejection signal against a library currently in production.
-
-Output per tier (both modes):
+Output per tier:
 - **Lite** — Kill-Criterion Card (~150 words). No full intent doc, no compressed derivative, no changelog comment.
 - **Standard** — full `intent.md` + extractive compression + GitHub publishing.
-- **Heavy** — Standard + required ADR links for ONE-WAY-DOOR priors. Org mode also requires
-  mandatory stakeholder confirmation before decomposition (Sub-phase 6).
+- **Heavy** — Standard + required ADR links for ONE-WAY-DOOR priors.
+
+*Org mode:* see [refine-epic-org.md](refine-epic-org.md) for adjacent-team thresholds and
+Heavy-tier confirmation gate.
 
 Present:
 ```
@@ -319,33 +321,22 @@ Sub-phase 1 evidence. Do not ask abstract tradeoff questions. Templates:
 - *"Here are two inferences I could draw from the same evidence: A or B. Which is closer, or
   is it neither?"* (use this disconfirming frame for at least one follow-up)
 
-**Required questions:**
+**Required questions (Standard + Heavy, solo mode):**
 
-*Solo mode (Standard + Heavy)* — premortem, scan-calibrated follow-ups, and Q-success only.
-All other questions are dropped: Q-commitment and shape are covered by the multi-angle
-Challenger pass (Sub-phase 5); Q-kill and Q-portfolio are assumed (invoking `/refine-epic`
-signals intent to build now; abandonment needs no formal criterion when you're the whole team).
-Q-borrowed applies only if Sub-phase 1 found external invariants (third-party APIs, vendor
-contracts) — ask only for those, scoped to blast radius if the assumption breaks.
-
-*Org mode (Standard + Heavy)* — all questions below apply:
-
-- **Q-stakeholders:** "Name three people or teams who must not be surprised when this ships.
-  For each, what's the specific thing they'd be surprised by?"
-- **Q-borrowed:** *(seeded with the Sub-phase 1 borrowed-invariants list)* "For each of these,
-  have you confirmed with the owner, or are you assuming stability? If confirmed, paste or
-  link the confirmation. If assuming, state the blast radius if the assumption breaks."
-- **Q-commitment:** "If this ships and six months later we want to walk it back, what's the
-  hardest thing to undo? Name the specific artifact — a table, a protocol field, a public
-  API, a vendor contract."
+- Premortem (always)
+- Scan-calibrated follow-ups (above)
 - **Q-success:** "What measurable signal in production proves this worked? Give a specific
   metric and a threshold. If you cannot name one, state why this is unfalsifiable."
-- **Q-kill:** "What dated, falsifiable condition would make you abandon this epic — not
-  ship it poorly, abandon it?"
-- **Q-portfolio:** "What are you not doing this cycle because you're doing this?"
+- **Q-borrowed** (only if Sub-phase 1 found external invariants): "Have you confirmed with the
+  owner, or are you assuming stability? If assuming, state the blast radius if it breaks."
 
-**Lite tier** — solo: premortem + Q-success only. Org: premortem, Q-kill, Q-success,
-Q-stakeholders (if external consumers exist in scan), Q-portfolio. Skip the rest.
+Dropped in solo mode: Q-commitment and shape are covered by the Challenger pass (Sub-phase 5);
+Q-kill and Q-portfolio are assumed (invoking `/refine-epic` signals intent to build now;
+abandonment needs no formal criterion when you're the whole team); Q-stakeholders is org-only.
+
+*Org mode:* see [refine-epic-org.md](refine-epic-org.md) for the full question set.
+
+**Lite tier:** premortem + Q-success only. Skip the rest.
 
 Present all questions for a round together in a single block — do not serialize.
 
@@ -356,15 +347,15 @@ Present all questions for a round together in a single block — do not serializ
 Score every answer against these detectors. Any two firing triggers a **probe round** —
 reject the abstract answer and force a concrete anchor before continuing.
 
-Bluffing signals:
+**Bluffing signals:**
 - Answer arrives in <15 seconds and echoes the epic body phrasing verbatim.
 - Certainty markers without reasoning ("obviously", "clearly", "we all know").
 - Tradeoff answers that name both sides without committing ("fast *and* correct").
 - Invariants phrased as preferences ("should be", "ideally", "would be nice").
-- No named alternative in decision priors, or in Q-kill if asked ("nothing really", "we just knew").
+- No named alternative in decision priors or in Q-kill ("nothing really", "we just knew").
 - Feared-failure mode that's a restatement of the goal inverted ("failure = it doesn't work").
 
-Considered-position signals (do not probe further):
+**Considered-position signals (do not probe further):**
 - Names the alternative and its strongest argument *before* rejecting it.
 - Cites a concrete past incident, PR, or observed behavior.
 - Qualifies ("usually X, except when Y").
@@ -378,127 +369,33 @@ Continue probing until answers carry concrete anchors.
 
 **Sub-phase 5 — Multi-Angle Challenger Pass (Standard + Heavy only)**
 
-Spawn three Challenger subagents **in parallel** (`model: "claude-sonnet-4-6"`), each with a
-distinct adversarial lens. Running them in parallel prevents challengers from anchoring on
-each other's arguments. This is the highest-leverage structural protection against sycophancy
-— and in solo mode, where no team exists to push back, it is the only external voice in the room.
+Spawn three Challenger subagents **in parallel** in a single response
+(`model: "claude-sonnet-4-6"`). Running them in parallel prevents Challengers from anchoring
+on each other's arguments. In solo mode, where no team exists to push back, this is the only
+external voice in the room.
 
-Pass all three challengers **identical inputs**:
-- Sub-phase 1 scan outputs (inferences list, coupling/stakeholder summary, borrowed invariants).
+Prompts live in [refine-epic/challenger-prompts.md](refine-epic/challenger-prompts.md). Read
+that file once, then pass each Challenger's prompt inline alongside the identical inputs:
+
+- Sub-phase 1 scan outputs (inferences list, coupling summary, borrowed invariants).
 - Q&A transcript from Sub-phase 3, verbatim.
 - **Do NOT pass the epic body text.** Each Challenger reasons from scan + transcript only.
 
-**Challenger 1 — Necessity**
-
-> You are an adversarial reviewer with one thesis: this epic should not be built, or a far
-> simpler alternative exists. Ground your argument in what the codebase scan reveals already
-> exists, what a configuration change could achieve, or what the simplest possible non-code
-> intervention looks like. Do not argue scope, timing, or architecture — argue existence.
-> Name the specific simpler alternative concretely. Cite scan findings or Q&A excerpts.
-> One page maximum. Do not hedge.
-
-**Challenger 2 — Timing / Priority**
-
-> You are an adversarial reviewer with one thesis: the author is doing this at the wrong time
-> or in the wrong priority order. Ground your argument in the Q&A transcript: what does the
-> author's own premortem reveal about what they are deferring to do this? What does the scan
-> reveal about dependencies, in-flight work, or deferred debt this will collide with? Do not
-> argue what to build or how — argue when and in what order. Cite scan findings or Q&A
-> excerpts. One page maximum. Do not hedge.
-
-**Challenger 3 — Shape / Architecture**
-
-> You are an adversarial reviewer with one thesis: the author has the right problem but the
-> wrong architectural shape. Ground your argument in the scan: what existing patterns,
-> boundaries, or prior decisions make the author's proposed approach the wrong fit? Name the
-> alternative shape concretely — not "use a different approach" but "extend X instead of
-> replacing it" or "move the boundary here instead of there." This challenger also owns the
-> irreversibility angle: if the author's shape creates a harder-to-undo commitment than the
-> alternative, surface it. Cite scan findings or Q&A excerpts. One page maximum. Do not hedge.
-
-Present the three outputs to the user:
-
-```
-Three adversarial angles — each agent saw only the scan and your answers, not your epic body:
-
-**[1] Necessity** — should this be built at all?
-<paste Challenger 1 output>
-
----
-
-**[2] Timing / Priority** — right thing, wrong time?
-<paste Challenger 2 output>
-
----
-
-**[3] Shape / Architecture** — right problem, wrong approach?
-<paste Challenger 3 output>
-
----
-
-Rebut. You can address all three together if they miss in the same way, or address each
-separately. Where is each wrong? What does it miss? If any part is correct, name it — those
-concessions update the intent document.
-```
-
-Capture the rebuttal verbatim. It becomes Section 10 of the intent document, structured as:
-
-```markdown
-## 10. Challenger Rebuttal
-
-### Challenger 1 — Necessity
-<Challenger 1 output verbatim>
-
-**Rebuttal:** <author's response>
-
-### Challenger 2 — Timing / Priority
-<Challenger 2 output verbatim>
-
-**Rebuttal:** <author's response>
-
-### Challenger 3 — Shape / Architecture
-<Challenger 3 output verbatim>
-
-**Rebuttal:** <author's response>
-```
-
-A rebuttal that concedes one or more points triggers a revision round on the sections it affects.
-
----
-
-**Sub-phase 6 — Stakeholder Confirmation Gate (Heavy tier, org mode only)**
-
-For every borrowed invariant identified in Sub-phase 1 and confirmed in Q-borrowed, require
-one of three dispositions from the author:
-
-- **Confirmed** — paste or link the owner's confirmation.
-- **Tagged** — tag the owning team on the epic issue with a deadline for response. Proceed
-  but flag as `CONDITIONAL` in the intent doc.
-- **Assumed, unverified** — explicit acknowledgement, with the specific blast radius stated.
-
-If a borrowed invariant on a critical path is **Assumed, unverified**, halt:
-
-```
-HALT — critical-path borrowed invariant is unverified:
-
-<invariant> — owner: <team>
-
-Confirm with the owner, tag them with a deadline, or accept documented blast radius
-before decomposition.
-```
+Present the three outputs to the user and capture the rebuttal verbatim (presentation
+template is in challenger-prompts.md). A rebuttal that concedes one or more points triggers
+a revision round on the sections it affects.
 
 ---
 
 **P0 blocker / contradiction detection (runs throughout Sub-phases 3–5).**
 
-While processing answers, evaluating the Challenger rebuttal, or reading the epic body, watch
-for:
+Watch for:
 - Dependency on an unresolved external decision.
 - A stated constraint that contradicts the epic's stated goal.
 - An explicit "we haven't decided" gating the entire decomposition.
 - An answer that directly contradicts another answer or scan evidence.
 
-If found, halt and surface it specifically. Do not proceed until resolved.
+If found, halt and surface it specifically:
 
 ```
 HALT — <P0 blocker | contradictory intent>:
@@ -512,130 +409,19 @@ Resolve before the intent document can be written.
 
 **Produce intent artifact**
 
-**Lite tier → `EPIC_DIR/intent.md` (Kill-Criterion Card)**
+Schemas live in [refine-epic/intent-templates.md](refine-epic/intent-templates.md). Read that
+file only when you reach this point.
 
-```markdown
-# Epic Intent Card: <Title>
+ROOT assembles the full `intent.md` text **in-memory** from the Q&A transcript and Challenger
+rebuttal. Do NOT print the full document to the user — write it to
+`$EPIC_DIR/intent.md` via a single `Write` call (file I/O, not output tokens).
 
-**Epic Issue:** <org/repo>#<number> — <URL>
-**Captured:** <YYYY-MM-DD>
-**Tier:** Lite
-
----
-
-## Cohort
-<One sentence: who the user is, named concretely.>
-
-## Status Quo
-<What this cohort does today without this epic.>
-
-## Kill Criterion
-<Dated, falsifiable condition under which this epic is abandoned — not shipped poorly,
-abandoned. Example: "If by 2026-06-01, weekly active cohort users have not moved by 15%,
-abandon.">
-
-## One ABSOLUTE Invariant
-<The single constraint whose violation requires undoing the work. If the author named more
-than one, Sub-phase 4 pushed back until they chose one.>
-
-## Opportunity Cost
-<The other work not happening this cycle because this epic is.>
+Tell the user:
+```
+Intent document written to .agent-work/EPIC_<slug>-<number>/intent.md. Posting to GitHub now...
 ```
 
-This card **is** the compressed form. No Compressor runs for Lite tier. Pass the card itself
-directly to downstream agents.
-
-**Standard + Heavy tier → `EPIC_DIR/intent.md`**
-
-Write each section as causal prose — no keyword bullet lists. A downstream agent reading
-this must be able to simulate the author's answer to an implementation decision that was
-never explicitly raised.
-
-```markdown
-# Epic Intent: <Title>
-
-**Epic Issue:** <org/repo>#<number> — <URL>
-**Captured:** <YYYY-MM-DD>
-**Tier:** <Standard | Heavy>
-
----
-
-## 1. Trigger and Pain
-<Observable symptoms today. Why now rather than later?>
-
-## 2a. Author-Feared Failure Mode
-<The author's premortem paragraph, verbatim. The outcome that would make this a failure
-even if every line of code shipped correctly.>
-
-## 2b. System-Level Failure Mode
-<What the organization regrets in 18 months even if the author's feared failure didn't
-materialize. Constructed from the stakeholder map + Challenger rebuttal, ratified by the
-author. If author-fear and system-fear diverge, note the divergence explicitly — that
-divergence is often the most important signal in this document.>
-
-## 3. Decision Priors
-<One paragraph per major tradeoff axis already resolved. "We chose X over Y because Z."
-Tag each: REVERSIBLE / ONE-WAY-DOOR / EXPENSIVE-TO-REVERSE. For each prior, also state:
-"What would change our mind" — the falsifiable trigger that flips the choice. End with
-a single **Dominant Priority** sentence naming the prior that outweighs the others.>
-
-## 4. Stakeholder Intent & Borrowed Invariants
-<Stakeholder matrix from Sub-phase 1, plus the author's Q-stakeholders answers. For each
-borrowed invariant: owner, disposition (Confirmed / Tagged / Assumed-unverified), blast
-radius if violated. Distinguishes constraints this epic OWNS (section 8) from constraints
-this epic DEPENDS ON but another team owns.>
-
-## 5. Architectural Commitment & Reversibility
-<From Q-commitment. Distinguish code-reversible (rename, refactor) from architecture-
-reversible (schema, protocol, identity, storage engine, vendor contract). Name the
-irreversible commitments concretely — "adds column X to table Y", not "database change".>
-
-## 6. Success Metrics & Kill Criterion
-<From Q-success and Q-kill. Quantified production signal (metric + threshold) proving the
-epic worked. Dated, falsifiable abandonment condition. These are the sections child issues
-are scored against.>
-
-## 7. Rollback Posture
-<How a rollback works: feature flag, config toggle, migration reversal, irreversible.
-State the blast radius of a bad ship, the revert time, and the observability hook (log,
-metric, alert) that detects the need to roll back.>
-
-## 8. Invariants (Author-Owned)
-<Hard constraints this epic OWNS. ABSOLUTE (violation requires undoing) or STRONG
-(violation requires documented override). Quantified where possible: "p99 < 150ms",
-"error rate < 0.1%", "cost < $500/month". Qualitative invariants without numbers are
-flagged for the author to quantify or drop.>
-
-## 9. Anti-Choices (incorporates Non-Goals)
-<"We considered X and rejected it because Y." Include explicit "this epic does not do X"
-non-goals. Conditional rejections state the revisit condition. Drop any rejection that
-the author cannot name the strongest argument for — Sub-phase 4 already caught those.>
-
-## 10. Challenger Rebuttal
-<The Challenger's counter-intent (verbatim) followed by the author's rebuttal (verbatim).
-Conceded points are called out explicitly and reflected in updates to sections 1–9.>
-
-## 11. Open Questions (Author-Deferred)
-<Name decision, why unresolved, flag: ESCALATE (surface to user before proceeding) or
-TIMEBOX (agent may decide within 24h, document reasoning). Empty with heading if none.>
-
----
-
-## Inferences From Existing Code
-<From Sub-phase 1, author-ratified in Sub-phase 3. Each entry: [INFER] statement → author's
-response.>
-```
-
-Value Function (previously a separate section) is removed — it duplicated Decision Priors.
-Non-Goals are merged into Anti-Choices. Feared Failure is split into author-level (2a) and
-system-level (2b) because they diverge more often than authors admit.
-
-After writing `intent.md`, print the full document to the user.
-
-If Sub-phases 3–5 completed without halting and the Challenger rebuttal either resolved or
-explicitly accepted every conceded point, the intent is validated — proceed directly to
-publishing. Only pause if TIMEBOX items remain unaddressed:
-
+If TIMEBOX items remain unaddressed, pause:
 ```
 Intent document written. One unresolved item before I proceed:
 
@@ -646,250 +432,121 @@ Clarify this and I'll post the document and start decomposition.
 
 ---
 
-**Create epic GitHub issue (free-form mode only):**
+**Publish via Publisher subagent**
 
-If the input was a free-form description, create the epic issue now before publishing the
-intent document. Title is derived from the description (kebab-slug expanded to title case):
+Load the Publisher prompt from [refine-epic/publisher-prompt.md](refine-epic/publisher-prompt.md)
+and spawn it (`model: "claude-sonnet-4-6"`). Pass inline:
 
-```bash
-gh issue create --repo <REPO> \
-  --title "<epic title>" \
-  --body-file - <<'EOF'
-<paste the Trigger and Pain section text from intent.md here — do not reference the file path>
+- The full contents of publisher-prompt.md
+- `EPIC_DIR` (absolute path — Publisher reads `intent.md` from here)
+- `REPO`
+- `EPIC_NUMBER` (integer, or `null` for free-form mode)
+- `TIER`
+- `BODY_SECTIONS` — ordered list of section headings (from intent-templates.md, per tier)
+- `COMPRESSED_SCHEMA` — ordered list of section headings for compression
+- `FREE_FORM_TITLE` — epic title, only in free-form mode
 
----
-*Epic created by /refine-epic from free-form description. Full intent document will follow as a comment.*
-EOF
+The Publisher:
+1. Creates the epic issue (free-form mode only), capturing `EPIC_NUMBER`.
+2. Reads `intent.md`.
+3. Writes `intent-compressed.md` by verbatim extraction (no LLM paraphrase).
+4. Posts the full intent as a `<!-- INTENT_DOC -->` changelog comment.
+5. Rewrites the epic body to prepend a `## Validated Intent` section (idempotent — strips
+   any prior Validated Intent block).
+6. Returns `INTENT_COMMENT_URL` (and `EPIC_NUMBER` in free-form mode).
+
+Once Publisher returns, tell the user:
+```
+Intent posted: <INTENT_COMMENT_URL>
 ```
 
-Use `--body-file -` and a heredoc so content is passed inline, not as a file reference.
-Capture the new issue number and URL. Set `<number>` to this value. Update `EPIC_DIR` to
-use the new issue number (rename the directory if needed). From this point forward, treat
-this as issue reference mode.
+For **Lite tier**, skip the Publisher spawn entirely — the Kill-Criterion Card is the whole
+artifact; there is no compressed derivative and no changelog comment. Post it inline as the
+epic body Validated Intent section via a single `gh issue edit` call.
+
+After Step 2: mark Step 2 done, Step 3 in_progress. Proceed directly to Step 3 — do not
+pause for user approval.
 
 ---
 
-**Publish to GitHub — two surfaces:**
+## Step 3 — Decomposition
 
-First, post the full intent as a changelog comment on the epic issue, with the
-`<!-- INTENT_DOC -->` marker for downstream tooling:
+Intent is locked. Decomposition is ROOT-driven: ROOT reasons about scope and workstream
+seams, spawns parallel Sonnet Researchers for per-workstream codebase investigation, then
+merges their outputs and writes artifacts. There is no Decomposer agent.
 
-```bash
-gh issue comment <number> --repo <REPO> --body-file - <<'EOF'
-<!-- INTENT_DOC -->
-## Epic Intent Document (generated by /refine-epic)
+### Phase A — ROOT working note
 
-<paste the full text of intent.md here — do not reference the file path>
+Private reasoning step. No tool calls. No file writes. Using `intent.md` + Sub-phase 1 scan +
+epic body, produce an in-memory note covering:
 
----
-*This document captures the validated intent before decomposition. Reply with corrections
-before decomposition is reviewed.*
-EOF
-```
+**A1. Stated scope.** Key phrases from the author quoted.
 
-Capture the returned comment URL as `INTENT_COMMENT_URL`.
-
-Second, rewrite the epic issue body to prepend a `## Validated Intent` section. Keep the
-original author's text below. For Standard/Heavy, include sections **2a, 2b, 3, 4, 6, 8, 9,
-and 10** — section 10 (Challenger Rebuttal) is deliberately surfaced on the body so the
-disconfirming work is visible to all downstream readers. For Lite, the body gets the
-Kill-Criterion Card verbatim.
-
-```bash
-ORIGINAL_BODY="$(gh issue view <number> --repo <REPO> --json body -q .body)"
-gh issue edit <number> --repo <REPO> --body-file - <<EOF
-## Validated Intent
-
-*Captured by /refine-epic on <YYYY-MM-DD>. Tier: <Lite|Standard|Heavy>.
-Full document: <INTENT_COMMENT_URL>*
-
-<paste the tier-appropriate sections per above>
-
----
-
-## Original Description
-
-\${ORIGINAL_BODY}
-EOF
-```
-
-If the epic body already contains a `## Validated Intent` section (prior run), replace it
-in place rather than stacking. Detect by matching the heading through `## Original Description`.
-
-Report both URLs to the user.
-
----
-
-**Extractive compression (Standard + Heavy only — replaces the Haiku Compressor).**
-
-Compression is now a deterministic concatenation performed by the main agent — no LLM
-paraphrase. LLM paraphrase smooths away the load-bearing qualifiers ("X over Y *when Z
-holds*") that cost multiple Q&A rounds to elicit. Write `EPIC_DIR/intent-compressed.md` by
-verbatim extraction:
-
-```markdown
-# Compressed Intent: <Title>
-
-**Full intent:** <INTENT_COMMENT_URL>
-
-## Feared Failure Modes
-<Section 2a verbatim>
-
-<Section 2b verbatim>
-
-## ABSOLUTE Invariants
-<Every ABSOLUTE-tagged item from Section 8, verbatim. Drop STRONG.>
-
-## Load-Bearing Decision Priors
-<The Dominant Priority paragraph from Section 3, verbatim. Plus every ONE-WAY-DOOR and
-EXPENSIVE-TO-REVERSE prior, verbatim, including its "What would change our mind" trigger.
-Drop REVERSIBLE priors.>
-
-## Borrowed Invariants (Unconfirmed on Critical Path)
-<From Section 4: only entries with disposition "Tagged" or "Assumed, unverified".
-Skip this section entirely if all confirmed.>
-
-## Success Metric & Kill Criterion
-<Section 6 verbatim>
-
-## Irreversible Commitments
-<From Section 5, only the irreversible items, verbatim.>
-
-## Key Anti-Choices
-<Top 3 from Section 9, author-ranked if Heavy tier, otherwise first 3. Verbatim.>
-```
-
-No paraphrase. No token budget. No summarization.
-
-For Lite tier, skip `intent-compressed.md` — the Kill-Criterion Card is already the
-compressed form.
-
-Do not print `intent-compressed.md` to the user — it is scaffolding for child issues.
-
-The Clarifier process is now complete. Proceed to Step 3 and spawn the Decomposer.
-
----
-
-## Step 3 — Decomposition (Autonomous)
-
-**Intent is now locked. Tell the user they can step away:**
-
-```
-Intent document is finalized and posted to GitHub. Spawning the Decomposer now — this
-will run autonomously and may take several minutes. Come back when you see the
-decomposition summary. You don't need to stay.
-```
-
-The Decomposer runs to completion without requiring user input. Do not interrupt it with
-questions, progress checks, or confirmations. The user reviews the full output in Step 4.
-
-Spawn a **Decomposer agent** (`model: "claude-opus-4-6"`).
-
-Pass it:
-- The full epic body + comments (if issue reference mode), or the free-form description.
-- The list of already-existing child issues (if any were found during Setup).
-- `GIT_ROOT` (or note that codebase context is unavailable).
-- `EPIC_DIR` as the output directory.
-- `EPIC_DIR/intent.md` as the source of truth for author intent. The Decomposer must read
-  this document before Phase A and treat it as authoritative. When any implementation
-  decision conflicts with the codebase evidence found in Phase B, the Decomposer resolves
-  the conflict using the reasoning in `intent.md` — specifically sections 3 (Decision Priors),
-  5 (Invariants), and 2 (Feared Failure Mode) — rather than escalating.
-- `EPIC_DIR/intent-compressed.md` — the compressed version the Decomposer embeds into each
-  child draft's Inherited Intent block (see C2). The Decomposer picks the *slice-relevant*
-  invariants for each child rather than pasting the full compressed file verbatim.
-- `INTENT_COMMENT_URL` — the GitHub URL of the full intent comment, to cite in each child's
-  Inherited Intent block so readers can always reach the unabridged document.
-
-### Decomposer agent instructions
-
-Role: read-only research + produce decomposition plan. No file writes except documents inside
-`EPIC_DIR`. No source file modifications. No branch or PR creation.
-
-**Context bootstrap (do this before anything else):**
-1. Read `~/.claude/CLAUDE.md` (global instructions) and `$GIT_ROOT/CLAUDE.md` (repo instructions)
-   if they exist.
-2. If `.codesight/CODESIGHT.md` exists at `$GIT_ROOT`, read it in full.
-3. If `docs/agent_index.md` exists at `$GIT_ROOT`, read it in full.
-   If not found there, glob for `**/agent_index.md` and read any match.
-4. If `GIT_ROOT` is unavailable, Phase B degrades to vocabulary-only analysis — no file paths,
-   no call-site counts. Mark every surface area row as `UNVERIFIED — codebase not available`
-   and continue.
-
----
-
-**Phase A — Understand the Epic's Scope and Decomposition Goal**
-
-Read the epic issue body and all comments in full. Produce a private working note (not an output
-file) covering:
-
-**A1. Stated scope.** What the author literally described. Quote the key phrases.
-
-**A2. Decomposition goal.** What the author actually needs: independently shippable slices that
-each move the system toward the epic's end state. Distinguish between:
+**A2. Decomposition goal.** Distinguish:
 - Slices the author named explicitly
 - Slices implied by the work but not mentioned
-- Work mentioned that is NOT a slice (cross-cutting concerns, one-time migrations, infra
-  prerequisites)
+- Work mentioned that is NOT a slice (cross-cutting concerns, one-time migrations,
+  infra prerequisites)
 
-**A3. Dependency identification.** For each candidate slice, ask:
-- Can this ship and deliver value without any other slice being complete?
-- If no: which slice must precede it, and why?
+**A3. Dependency identification.** For each candidate slice: can it ship and deliver value
+without another slice completing? If no, which slice must precede it, and why? A slice that
+fails this must be merged with its dependency or flagged as a prerequisite block.
 
-A slice that cannot answer "yes" to the first question is not independently shippable. It must
-either be merged with its dependency or flagged as a prerequisite block.
+**A4. Workstream seams.** Group slices by primary system boundary — data, API, CLI, frontend,
+jobs, infra. 3–6 workstreams max. Slices within a workstream are sequential; slices across
+workstreams may be parallel.
 
-**A4. Workstream seams.** Group slices by the primary system boundary they cross (e.g. data
-layer, API layer, CLI, frontend, background jobs, infra). Seams are where the decomposition
-cuts — slices within a workstream are sequential; slices across workstreams may be parallel.
+Do not include existing child issues as proposed slices — reference them under "Existing
+Children" in the index.
 
-Do not include existing child issues (passed in from Setup) as proposed slices. Reference them
-in the index doc under a "Existing Children" section.
+Output (in-memory only): workstream list with `(name, concern, candidate_slices[])` per entry.
 
----
+### Phase B — Parallel Sonnet Researchers
 
-**Phase B — Codebase Research (run per workstream, not per epic)**
+Load the Researcher prompt from [refine-epic/researcher-prompt.md](refine-epic/researcher-prompt.md)
+once. Then, **in a single response**, emit one `Agent` tool call per workstream
+(`model: "claude-sonnet-4-6"`). All Researchers run concurrently.
 
-For each workstream identified in Phase A, perform independent surface area research. Do not
-collapse multiple workstreams into a single search pass.
+Per-Researcher inputs (substituted into the prompt):
+- `WORKSTREAM_NAME`, `WORKSTREAM_CONCERN`, `CANDIDATE_SLICES`
+- `INTENT_COMPRESSED` — verbatim contents of `intent-compressed.md`
+- `GIT_ROOT`
 
-**Required search checklist per workstream — do not skip steps:**
+Each Researcher runs the 5-step research checklist (vocab grep, entry-point enum,
+dead-integration check, integration-seam detection, test coverage probe) and returns a
+JSON object with `files_touched`, `entry_points`, `suspected_unwired`, `integration_seams`,
+`coverage_gaps`, `notes`. No file writes.
 
-1. **Vocabulary grep.** Grep for the primary noun and verb from the workstream's concern.
-   Record every file that matches.
+### Phase C — ROOT synthesis + artifact write
 
-2. **Entry point enumeration.** Search for all user-facing entry points relevant to this
-   workstream: `**/cli*`, `**/commands*`, `**/handlers*`, `**/routes*`, `**/views*`,
-   `**/server*`, `**/app*`, `**/jobs*`, `**/tasks*`, `**/workers*`, `**/settings*`,
-   `**/config*`. List every match — do not filter yet.
+After all Researchers return, ROOT:
 
-3. **Dead integration check.** For each function or class that implements the workstream's core
-   behavior: grep for its name and count call sites. If call sites ≤ 1 (defined but not called,
-   or only self-referential), flag it as a suspected unwired integration — file and line number.
-   Do not conclude whether it is truly dead; surface the evidence for the implementer.
+1. **Intersect `files_touched` across Researchers.** Any file in ≥2 outputs is a seam
+   candidate. Add to Integration Seams list. Add each cross-workstream Researcher-reported
+   seam (from `integration_seams`) as well.
 
-4. **Integration seam detection.** Identify any file or component that multiple workstreams
-   will need to modify. Flag these explicitly — they require sequencing or coordination across
-   slices and must appear in the Risk Register.
+2. **Run Quality Checks inline:**
+   - DAG-ness: no cycles in the dependency graph
+   - Slice Independence: every slice has a one-sentence independence statement
+   - Every risk has a mitigation
+   - Every child has a Behavioral Question or is marked `NEEDS HUMAN INPUT`
+   - Every child draft's Inherited Intent block is populated (see C2 below)
 
-5. **Test coverage probe.** Grep for the workstream's primary symbols in `**/test*` and
-   `**/spec*` directories. Record which entry points have no corresponding test file match —
-   these are coverage gaps the slice spec must address.
+3. **Write `EPIC_DIR/index.md`** (schema below) and **one `EPIC_DIR/child-<N>-<slug>.md`
+   per slice** (schema below).
 
-After completing all workstream searches, state explicitly:
-```
-Decomposition research: examined N files across M workstreams.
-Integration seams identified: <list>
-Coverage confidence: [high / medium / low — explain if medium or low]
-```
+4. **Populate Inherited Intent blocks** by filtering `intent-compressed.md` for
+   slice-relevance: include an invariant or prior only if this slice's surface area could
+   plausibly violate it. When uncertain, include it — under-inclusion here is the failure
+   mode the block exists to prevent.
 
----
+The Researchers' outputs and ROOT's written artifacts are **authoritative**. Do not re-read
+`index.md` or sample child drafts to "verify" before Step 4 — Quality Checks already ran
+inline as part of Phase C. Proceed directly to Step 4.
 
-**Phase C — Produce Output Artifacts**
+After Step 3: mark Step 3 done, Step 4 in_progress.
 
-Write two artifact types into `EPIC_DIR`.
-
-**C1. Epic index document** — `EPIC_DIR/index.md`
+### C1. Index document schema — `EPIC_DIR/index.md`
 
 ```markdown
 # Epic: <Title>
@@ -952,8 +609,8 @@ If all slices are parallelizable, state that explicitly.>
 
 ## Integration Seams
 
-<Shared components that multiple slices modify. For each seam: which slices touch it and
-what coordination is required.>
+<Populated mechanically from ROOT's Researcher-output intersection. For each seam: which
+slices touch it and what coordination is required.>
 
 ## Decomposition Table
 
@@ -970,8 +627,7 @@ and do not create a draft file for that child.
 
 | Risk | Affected Slices | Likelihood | Mitigation |
 |------|----------------|------------|------------|
-| <e.g. shared DB migration conflicts> | Slice 2, Slice 4 | Medium | Land Slice 2 first |
-| <e.g. API contract change breaks callers> | Slice 3 | Low | Version the endpoint |
+| | | | |
 
 ## Out of Scope for This Epic
 
@@ -980,22 +636,11 @@ and do not create a draft file for that child.
 ## Existing Children
 
 <Child issues that already exist at the time of refinement. Do not re-propose these.>
-
----
-
-## Sign-Off Gate *(org mode only — omit in solo mode)*
-
-| Role | Name | Status | Date |
-|------|------|--------|------|
-| Engineering DRI | | PENDING | |
-| Affected Team Lead(s) | | PENDING | |
-
-**Gate rule:** Epic must reach APPROVED from all required roles before any child issue is
-handed to `/resolve-issue`. Partial sign-off does not unblock execution. The Decomposer
-cannot enforce this mechanically — it states it explicitly and sets status accordingly.
 ```
 
-**C2. Per-slice child issue draft** — `EPIC_DIR/child-<N>-<slug>.md`, one file per slice
+*Org mode:* append Sign-Off Gate table — see [refine-epic-org.md](refine-epic-org.md).
+
+### C2. Per-slice child draft schema — `EPIC_DIR/child-<N>-<slug>.md`
 
 ```markdown
 # Child Issue Draft: <Title>
@@ -1026,11 +671,6 @@ cannot enforce this mechanically — it states it explicitly and sets status acc
 this slice is most likely to touch. One sentence each. If none apply, write "None — this
 slice does not cross any resolved tradeoff axis" and link to the full intent comment.>
 
-<The Decomposer populates this block from intent-compressed.md. Slice-relevance filter:
-include an invariant or prior only if this slice's surface area could plausibly violate it.
-When uncertain, include it — under-inclusion here is the failure mode this block exists
-to prevent.>
-
 ## Background
 
 <Context from the epic scoping this child. 2–4 sentences max. References epic index.>
@@ -1058,8 +698,7 @@ to prevent.>
 ## Slice Independence Statement
 
 This slice can ship without any other slice in this epic being complete because:
-<one concrete reason — e.g. "it adds a new column with a default value and no existing code
-path reads it until child #3 wires the API.">
+<one concrete reason>
 
 If this statement cannot be written, do not create this child draft — merge the slice with
 its dependency and document the merge in the epic index.
@@ -1076,54 +715,29 @@ its dependency and document the merge in the epic index.
 
 ---
 
-**Quality checks before finishing:**
-
-- [ ] Every slice has a written Slice Independence Statement. Any slice that failed the
-  independence test is merged with its dependency or converted to a prerequisite.
-- [ ] No file path appears in two different slice surface area tables without an explicit
-  Integration Seam entry in the index and in both affected child drafts.
-- [ ] The dependency graph is a DAG — no cycles.
-- [ ] Every risk in the Risk Register maps to at least one named mitigation.
-- [ ] The dead integration check ran for every workstream. Every suspicious symbol appears in
-  the relevant child's surface area table with a "verify wiring" note.
-- [ ] Every child with a missing Behavioral Question is marked `NEEDS HUMAN INPUT` in the
-  decomposition table, and no draft file was created for it.
-- [ ] Every child draft's Inherited Intent block contains a verbatim Feared Failure Mode,
-  at least the slice-relevant ABSOLUTE invariants, and the `INTENT_COMMENT_URL` citation.
-  A child with an empty or placeholder Inherited Intent block is not considered complete.
-- [ ] Coverage confidence statement is present. Any workstream rated "low" is flagged in the
-  index for human review before implementation begins.
-- [ ] If any P0 unknown exists, epic status is set to `UNKNOWNS_BLOCKED` and no child drafts
-  are written — only the index with the unknowns table.
-
----
-
 ## Step 4 — Create Child GitHub Issues
 
-Trigger: Decomposer completes Step 3 with no P0 unknowns blocking.
+Trigger: Phase C completed with no P0 unknowns blocking.
 
-For each slice with a complete Behavioral Question, in dependency order (leaves of
-the DAG first):
+Create all child issues in one pass via a single bash script that derives titles from child
+drafts' first-line headers and issues them in dependency order (leaves of the DAG first):
 
 ```bash
-gh issue create --repo <REPO> \
-  --title "<proposed child issue title from index.md>" \
-  --body "$(cat <<'EOF'
-Part of epic #<number>.
-
-<full contents of EPIC_DIR/child-<N>-<slug>.md>
-
----
-*Generated by /refine-epic. Review before running /resolve-issue on this child issue.*
-EOF
-)" \
-  --label "child-issue"
+cd "$EPIC_DIR"
+for draft in $(ls child-*.md | sort); do
+  title="$(head -1 "$draft" | sed -e 's/^# Child Issue Draft: //')"
+  url="$(gh issue create --repo "$REPO" \
+    --title "$title" \
+    --body "$(printf 'Part of epic #%s.\n\n' "<number>"; cat "$draft"; printf '\n\n---\n*Generated by /refine-epic. Review before running /resolve-issue on this child issue.*\n')" \
+    --label "child-issue")"
+  echo "$draft -> $url"
+done
 ```
 
-After each issue is created, capture its number and URL. Update `EPIC_DIR/index.md` to record
-the mapping: `Child N → #<child-number> <url>`.
+After each issue is created, update `EPIC_DIR/index.md` to record the mapping
+`Child N → #<child-number> <url>`.
 
-After all child issues are created, print:
+Print:
 ```
 Child issues created:
   Child 1: #<n> <title> — <url>
@@ -1134,57 +748,45 @@ Starting surrogate-driven refinement for each child. No questions will be asked 
 the epic intent document provides the surrogate's knowledge base.
 ```
 
+After Step 4: mark Step 4 done, Step 5 in_progress. Do not pause for user approval between
+creating child issues and spawning the first Surrogate.
+
 ---
 
 ## Step 5 — Surrogate-Driven Child Refinement
 
-Run immediately after Step 4, processing children in dependency order (serial).
+Run immediately after Step 4, processing children in dependency order.
 
-The premise: Step 2 captured enough author reasoning that a surrogate seeded from
-`intent.md` can answer all questions the `/refine-issue` Intent agent would ask —
+The premise: Step 2 captured enough author reasoning that a Surrogate seeded from
+`intent-compressed.md` can answer all questions `/refine-issue`'s Intent agent would ask —
 without escalating to the real user.
 
-### Per-child: spawn a Surrogate agent (model: "claude-sonnet-4-6")
+Load the Surrogate prompt from [refine-epic/surrogate-prompt.md](refine-epic/surrogate-prompt.md)
+once, then reuse for every Surrogate spawn.
 
-For each child issue, spawn a dedicated Surrogate agent. Do not start the next child
-until the current one completes.
+### Per-child: one `Agent` call per child
+
+For each child issue, emit one `Agent` tool call (`model: "claude-sonnet-4-6"`). **Do NOT
+batch multiple children into one agent** — each Surrogate must start with a fresh context.
+With N children, ROOT emits N separate `Agent` calls, waiting for each to complete before
+emitting the next.
+
+> **Constraint:** Do not describe a single subagent as a "multi-way" or "N-way" surrogate.
+> One subagent = one child issue. A subagent that processes multiple children in sequence is
+> a correctness bug: escalations from child N pollute child N+1's context, and the quadratic
+> cache-growth penalty makes it 3–5× more expensive than intended.
 
 Pass each Surrogate:
-- Full contents of `EPIC_DIR/intent-compressed.md` (not the full `intent.md` — the compressed
-  version is sufficient for answering refinement questions and keeps the Surrogate's context
-  focused on what matters to this slice)
+- Full contents of `EPIC_DIR/intent-compressed.md`
 - Full contents of the assigned child's draft: `EPIC_DIR/child-<N>-<slug>.md`
-- The path to `EPIC_DIR/intent.md` — the Surrogate may read it on demand if a question
-  cannot be resolved from the compressed version
-- Full contents of all other child drafts (for understanding what is NOT this child's scope)
+- The absolute path to `EPIC_DIR/intent.md` (for on-demand deeper reads)
+- Full contents of all OTHER child drafts (for understanding what is NOT this child's scope)
 - The epic issue body and comments
 - The child issue number and GitHub URL
 
-**Surrogate agent instructions:**
-
-You are the product owner for this epic, acting as a surrogate. Your knowledge base is
-`intent-compressed.md` (primary) and the child draft. `intent.md` is available on-disk if
-you need to check a detail the compressed version omitted. You have no opinions beyond
-what those documents state — you do not guess or invent intent.
-
-Your job: run `/refine-issue <child-number>` and act as the human respondent throughout
-its Intent agent dialogue. When the Intent agent asks you questions, answer from
-`intent-compressed.md` first, citing the relevant section (e.g., "Per Decision Priors: ...").
-Consult `intent.md` only if the compressed version is insufficient.
-
-If a question cannot be answered from either document or the child draft, respond:
-`[ESCALATE] <question> — not resolved by the intent document.`
-Log all escalations. Do not block on them — let `/refine-issue` continue and note the
-open question in the intent summary's Open Questions section.
-
-All other `/refine-issue` behavior is unchanged: complete the Intent agent dialogue,
-confirm the intent summary, and let the Spec agent run its full codebase research and
-produce the refined spec. The spec will be posted to the child's GitHub issue by
-`/refine-issue` as normal.
-
-After the Surrogate completes, collect any escalations and report them.
-
----
+The Surrogate runs `/refine-issue <child-number>`, acting as the author by answering from
+`intent-compressed.md` first and citing the relevant section. It returns
+`{child_number, spec_comment_url, escalations[]}`.
 
 After all children complete, surface escalations to the user:
 
@@ -1201,16 +803,15 @@ Escalations requiring human input:
 If there are escalations, wait for the user to answer, then update the relevant child's
 spec comment on GitHub with the resolved intent.
 
-Then proceed immediately to Step 6.
+After Step 5: mark Step 5 done, Step 6 in_progress.
 
 ---
 
 ## Step 6 — Post Decomposition Summary
 
-Post a summary comment on the GitHub epic issue:
+Assemble the summary markdown in-memory:
 
-```bash
-gh issue comment <number> --repo <REPO> --body "$(cat <<'EOF'
+```markdown
 ## refine-epic: decomposition complete
 
 Child issues and refined specs:
@@ -1225,17 +826,21 @@ Integration seams: <N>
 Open escalations: <N> (review before /resolve-issue)
 
 Ready for /resolve-issue per child, in dependency order.
-EOF
-)"
 ```
 
-Then tell the user in-chat:
+Spawn the Publisher in **summary mode** (`model: "claude-sonnet-4-6"`). Pass the prompt from
+[refine-epic/publisher-prompt.md](refine-epic/publisher-prompt.md) plus:
+- `REPO`
+- `EPIC_NUMBER`
+- `SUMMARY_MD_CONTENT` — the assembled summary above
+
+The Publisher posts the comment and returns `summary_comment_url`. Then tell the user:
 ```
 Done. Decomposition posted to <epic issue url>.
 Next step: /resolve-issue <child-number> for each child, in dependency order.
 ```
 
-Stop.
+Mark Step 6 done. Stop.
 
 ---
 
@@ -1248,17 +853,13 @@ populated. Stop. Do not write any child draft files. Prompt the user to resolve 
 and re-run.
 
 **Gate 2 — Behavioral Question Gate** (blocks individual child drafting)
-Condition: The Decomposer cannot produce a one-sentence Behavioral Question for a child from
-available context.
+Condition: ROOT cannot produce a one-sentence Behavioral Question for a child from
+Researcher outputs + intent.
 Action: Add the child row to the decomposition table with Behavioral Question =
-`NEEDS HUMAN INPUT` and Effort = `?`. Do not create a draft file for that child. Continue
-drafting other children where the question is answerable.
+`NEEDS HUMAN INPUT` and Effort = `?`. Do not create a draft file. Continue drafting other
+children where the question is answerable.
 
-**Gate 3 — Sign-Off Gate** (advisory — blocks handoff to `/resolve-issue`)
-Condition: Any required role in the Sign-Off table is PENDING.
-Action: Epic index status must read `DRAFT` or `UNKNOWNS_BLOCKED`, never `READY_TO_EXECUTE`.
-State explicitly in output: *"This epic is not cleared for implementation. Obtain sign-off
-from: <list>."* The Decomposer cannot enforce this mechanically beyond stating it.
+*Org mode:* Gate 3 (Sign-Off Gate) — see [refine-epic-org.md](refine-epic-org.md).
 
 ---
 
@@ -1268,10 +869,8 @@ from: <list>."* The Decomposer cannot enforce this mechanically beyond stating i
 - Never open branches, commits, or PRs.
 - Child issues are created automatically after decomposition. Do not hold issue creation
   waiting for user input unless a P0 unknown blocks it (Gate 1).
-- Rough effort uses T-shirt sizing only (XS/S/M/L/XL). No story points, no hours. Precision
-  is false at epic definition time.
-- Never invent a DRI or team assignment. Use `TBD` and flag it as requiring human input before
-  the Sign-Off Gate clears.
+- Rough effort uses T-shirt sizing only (XS/S/M/L/XL). No story points, no hours.
+- Never invent a DRI or team assignment. Use `TBD`.
 - If the codebase cannot be scanned (no git root, access denied, too large), mark all surface
   area rows as `UNVERIFIED` and state scan coverage explicitly.
 - The output is a recommendation, not a binding contract. The user should review the

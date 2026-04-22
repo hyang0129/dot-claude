@@ -26,7 +26,8 @@ SESSIONS_DIR = os.path.expanduser("~/.claude/projects")
 # Keywords used to classify a subagent by its meta description.
 _PHASE_PATTERNS = [
     ("challenger",  re.compile(r"challenger", re.I)),
-    ("decomposer",  re.compile(r"decompos", re.I)),
+    ("researcher",  re.compile(r"research", re.I)),
+    ("publisher",   re.compile(r"publish", re.I)),
     ("surrogate",   re.compile(r"surrogate|refine.issue", re.I)),
     ("explore",     re.compile(r"explore|codebase.scan|scan", re.I)),
 ]
@@ -116,17 +117,17 @@ ROOT_PHASES = [
     "root-scan",
     "root-interview",
     "root-post-challenger",
-    "root-post-decomposer",
+    "root-post-researcher",
     "root-post-surrogate",
 ]
 
 ROOT_PHASE_LABEL = {
-    "root-pre-cmd":         "R-PRE",
-    "root-scan":            "R-SCAN",
-    "root-interview":       "R-INTV",
-    "root-post-challenger": "R-POST-CHAL",
-    "root-post-decomposer": "R-POST-DECO",
-    "root-post-surrogate":  "R-POST-SURR",
+    "root-pre-cmd":          "R-PRE",
+    "root-scan":             "R-SCAN",
+    "root-interview":        "R-INTV",
+    "root-post-challenger":  "R-POST-CHAL",
+    "root-post-researcher":  "R-POST-RESE",
+    "root-post-surrogate":   "R-POST-SURR",
 }
 
 
@@ -136,10 +137,10 @@ def collect_root_phases(filepath):
     Phases, in order:
       root-scan            — before the user's first reply after /refine-epic (Sub-phase 1 scan).
       root-interview       — first user reply up to first subagent (Agent) spawn (Sub-phases 2–4).
-      root-post-challenger — first Agent spawn up to first decomposer spawn (rebuttal + publish).
-      root-post-decomposer — first decomposer spawn up to first surrogate spawn (child creation).
+      root-post-challenger — first Agent spawn up to first researcher spawn (rebuttal + publish).
+      root-post-researcher — first researcher spawn up to first surrogate spawn (decomposition).
       root-post-surrogate  — first surrogate spawn onward (consumption + final summary).
-    When a transition is missing (e.g. no decomposer spawned), later phases collapse into the
+    When a transition is missing (e.g. no researcher spawned), later phases collapse into the
     last reached phase naturally.
     """
     events: list[tuple[str, str, dict, str, str]] = []
@@ -201,7 +202,7 @@ def collect_root_phases(filepath):
             t_cmd = ts
             break
 
-    t_first_user_reply = t_first_chal = t_first_deco = t_first_surr = None
+    t_first_user_reply = t_first_chal = t_first_rese = t_first_surr = None
     seen_assistant_since_cmd = False
     for ts, tag, _u, _m, task_phase in events:
         if t_cmd is not None and ts < t_cmd:
@@ -217,8 +218,8 @@ def collect_root_phases(filepath):
             # phase boundary. Only the pipeline-structural spawns do.
             if task_phase == "challenger" and t_first_chal is None:
                 t_first_chal = ts
-            if task_phase == "decomposer" and t_first_deco is None:
-                t_first_deco = ts
+            if task_phase == "researcher" and t_first_rese is None:
+                t_first_rese = ts
             if task_phase == "surrogate" and t_first_surr is None:
                 t_first_surr = ts
 
@@ -229,10 +230,10 @@ def collect_root_phases(filepath):
             return "root-scan"
         if t_first_chal is None or ts < t_first_chal:
             return "root-interview"
-        if t_first_deco is None or ts < t_first_deco:
+        if t_first_rese is None or ts < t_first_rese:
             return "root-post-challenger"
         if t_first_surr is None or ts < t_first_surr:
-            return "root-post-decomposer"
+            return "root-post-researcher"
         return "root-post-surrogate"
 
     phases: dict[str, dict] = {}
@@ -295,7 +296,7 @@ def load_subagents(session_dir: str) -> list[dict]:
         })
 
     # Sort by phase order for readability
-    phase_order = {"challenger": 0, "explore": 1, "decomposer": 2, "surrogate": 3, "other": 4}
+    phase_order = {"challenger": 0, "explore": 1, "researcher": 2, "publisher": 3, "surrogate": 4, "other": 5}
     records.sort(key=lambda r: (phase_order.get(r["phase"], 9), r["description"]))
     return records
 
@@ -466,10 +467,11 @@ def fmt_usage(usage: dict) -> str:
 
 PHASE_LABEL = {
     "challenger": "CHAL",
-    "decomposer":  "DECO",
-    "surrogate":   "SURR",
-    "explore":     "EXPL",
-    "other":       "    ",
+    "researcher": "RESE",
+    "publisher":  "PUBL",
+    "surrogate":  "SURR",
+    "explore":    "EXPL",
+    "other":      "    ",
 }
 
 
@@ -544,7 +546,7 @@ def print_detail(sessions, days):
     print(_HR2)
     print(f"  {'GRAND':<8}  {f'({len(sessions)} sessions)':<48}  {fmt_usage(grand)}")
     print()
-    print("Phases — CHAL=challenger  DECO=decomposer  SURR=surrogate  EXPL=explore")
+    print("Phases — CHAL=challenger  RESE=researcher  PUBL=publisher  SURR=surrogate  EXPL=explore")
     print("Hit% = cache_read / (input + cache_write + cache_read)")
 
 
@@ -682,8 +684,8 @@ def write_markdown(sessions, days, path):
             phase_totals[phase] = phase_totals.get(phase, 0.0) + cost_usd(mu, _)
 
         phase_order = [
-            "R-PRE", "R-SCAN", "R-INTV", "R-POST-CHAL", "R-POST-DECO", "R-POST-SURR",
-            "CHAL", "EXPL", "DECO", "SURR", "OTHER",
+            "R-PRE", "R-SCAN", "R-INTV", "R-POST-CHAL", "R-POST-RESE", "R-POST-SURR",
+            "CHAL", "EXPL", "RESE", "PUBL", "SURR", "OTHER",
         ]
 
         def _phase_sort_key(phase: str):
@@ -714,7 +716,7 @@ def write_markdown(sessions, days, path):
         lines.append("")
 
         lines.append("---")
-        lines.append("Phases: CHAL=challenger, DECO=decomposer, SURR=surrogate, EXPL=explore  ")
+        lines.append("Phases: CHAL=challenger, RESE=researcher, PUBL=publisher, SURR=surrogate, EXPL=explore  ")
         lines.append("Hit% = cache_read / (input + cache_write + cache_read)")
 
     with open(path, "w", encoding="utf-8") as f:
