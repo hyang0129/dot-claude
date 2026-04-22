@@ -60,6 +60,25 @@ Examples:
 
 This means the Reviewer runs `cycles + 1` times total: once before each fix cycle, plus a final read-only review at the end. The last review never triggers fixes.
 
+### Parse named flags
+
+After positional argument parsing, scan the remaining argv for named flags.
+
+**`--reviewer-model=<model-id>`** (default: `claude-opus-4-7`)
+- Accept the flag anywhere in argv — before, between, or after positional args.
+- Match with a regex like `^--reviewer-model=(.+)$` against each remaining token; on match, set `REVIEWER_MODEL` and remove the token from argv.
+- Validate against this allow-list:
+  - `claude-opus-4-7` (default)
+  - `claude-opus-4-6`
+  - `claude-sonnet-4-6`
+  - `claude-haiku-4-5`
+- If the value is not in the allow-list, stop and tell the user:
+  > Unknown `--reviewer-model=<value>`. Allowed: `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-haiku-4-5`.
+- If the flag is absent, set `REVIEWER_MODEL=claude-opus-4-7`.
+- `REVIEWER_MODEL` is bound for the entire invocation — all cycles run with the same model. It is NOT re-parsed per cycle.
+
+This flag is exclusively for A/B testing Reviewer quality vs. cost. The Fixer and Intent Validator models are not configurable at this time.
+
 Find the associated PR:
 ```
 gh pr list --head <branch> --json number,title,url,state --limit 1
@@ -78,6 +97,111 @@ gh pr view <pr-number> --json reviews --jq '.reviews | length'
 ```
 If the result is `0` (no reviews), set `NEEDS_INITIAL_REVIEW = true`. Otherwise set it to `false`.
 
+### Bundle helpers
+
+Used by the REVIEW_BUNDLE and INTENT_BUNDLE assembly steps below. Define once here:
+
+```bash
+# Files excluded from bundle contents (still referenced by path, but not inlined)
+BUNDLE_SKIP_PATTERNS='\.lock$|-lock\.|\.min\.(js|css)$|\.generated\.|^(dist|build|node_modules)/'
+
+# Bundles over this many lines drop per-file contents and keep only diffs +
+# metadata. 5000 lines ≈ 30K tokens — above that, cache-write cost starts to
+# outweigh the turn-count savings.
+BUNDLE_SOFT_CAP_LINES=5000
+
+# Usage: bundle_truncate_if_oversized <bundle-path>
+# Rewrites the bundle in place, preserving everything up to the first
+# "## Touched files" or "## Current contents" header, then appending a
+# truncation marker + the repo-context footer.
+bundle_truncate_if_oversized() {
+  local bundle="$1"
+  local n
+  n=$(wc -l < "$bundle")
+  if [ "$n" -le "$BUNDLE_SOFT_CAP_LINES" ]; then return 0; fi
+  local cutoff
+  cutoff=$(grep -n -E '^## (Touched files|Current contents)' "$bundle" | head -1 | cut -d: -f1)
+  [ -z "$cutoff" ] && return 0
+  {
+    head -n "$cutoff" "$bundle"
+    echo
+    echo "BUNDLE_TRUNCATED=true  # original was $n lines; per-file contents omitted"
+    echo
+    echo '## Repo context'
+    [ -f "$GIT_ROOT/CLAUDE.md" ]      && { echo '### $GIT_ROOT/CLAUDE.md';   cat "$GIT_ROOT/CLAUDE.md"; }
+    [ -f "$HOME/.claude/CLAUDE.md" ]  && { echo '### ~/.claude/CLAUDE.md';    cat "$HOME/.claude/CLAUDE.md"; }
+  } > "$bundle.tmp" && mv "$bundle.tmp" "$bundle"
+}
+```
+
+### Capture pre-loop HEAD
+
+Before any Fixer commits anything, record the current branch tip so the Intent Validator can later diff pre-loop vs post-loop state:
+
+```bash
+git -C "$GIT_ROOT" rev-parse HEAD > "$GIT_ROOT/.agent-work/PRE_LOOP_HEAD.sha"
+```
+
+This SHA is the boundary between "what the PR author wrote" and "what the automated fix-loop added".
+
+### Assemble review bundle
+
+Write `.agent-work/REVIEW_BUNDLE.md` before the first Reviewer spawn. The bundle is reused across all Reviewer invocations in this run (Initial, Cycle N, Final).
+
+```bash
+PR_NUM=<pr-number>
+BUNDLE="$GIT_ROOT/.agent-work/REVIEW_BUNDLE.md"
+
+# PR metadata + diff (top of bundle)
+{
+  echo "# Review bundle for PR #$PR_NUM"
+  echo
+  echo '## PR metadata'
+  gh pr view "$PR_NUM" \
+    --json number,title,body,baseRefName,headRefName,additions,deletions \
+    --jq '"- Title: " + .title + "\n- Base: " + .baseRefName
+          + "\n- Head: " + .headRefName
+          + "\n- +" + (.additions|tostring) + " / -" + (.deletions|tostring)
+          + "\n\n### Body\n" + .body'
+  echo
+  echo '## PR diff'
+  echo '```diff'
+  gh pr diff "$PR_NUM"
+  echo '```'
+  echo
+  echo '## Touched files (current contents)'
+} > "$BUNDLE"
+
+# Per-file contents, skipping binary/generated patterns, capped at 1000 lines each
+gh pr view "$PR_NUM" --json files --jq '.files[].path' | while read -r f; do
+  if [[ "$f" =~ $BUNDLE_SKIP_PATTERNS ]] || [[ ! -f "$GIT_ROOT/$f" ]]; then
+    printf '\n<file path="%s" skipped="binary-or-generated-or-deleted"/>\n' "$f" >> "$BUNDLE"
+    continue
+  fi
+  printf '\n<file path="%s">\n```\n' "$f" >> "$BUNDLE"
+  head -n 1000 "$GIT_ROOT/$f" >> "$BUNDLE"
+  printf '\n```\n</file>\n' >> "$BUNDLE"
+done
+
+# Repo + global context at the bottom (smallest, least hot)
+{
+  echo
+  echo '## Repo context'
+  [ -f "$GIT_ROOT/CLAUDE.md" ]      && { echo '### $GIT_ROOT/CLAUDE.md';   cat "$GIT_ROOT/CLAUDE.md"; }
+  [ -f "$HOME/.claude/CLAUDE.md" ]  && { echo '### ~/.claude/CLAUDE.md';    cat "$HOME/.claude/CLAUDE.md"; }
+  INDEX="$GIT_ROOT/docs/agent_index.md"
+  [ -f "$INDEX" ]                    && { echo '### docs/agent_index.md (first 200 lines)'; head -n 200 "$INDEX"; }
+  [ -f "$GIT_ROOT/.codesight/CODESIGHT.md" ] && { echo '### .codesight/CODESIGHT.md'; cat "$GIT_ROOT/.codesight/CODESIGHT.md"; }
+} >> "$BUNDLE"
+
+# Save the skipped-file list for transparency
+grep '<file path=.*skipped=' "$BUNDLE" | head -20 \
+  > "$GIT_ROOT/.agent-work/REVIEW_BUNDLE_SKIPPED.txt" 2>/dev/null || true
+
+# Apply the 5000-line size cap
+bundle_truncate_if_oversized "$BUNDLE"
+```
+
 Track state:
 - `CURRENT_CYCLE = 1`
 - `MAX_CYCLES = <cycles>`
@@ -86,7 +210,7 @@ Track state:
 
 ## Subagent Context Bootstrap
 
-When spawning any subagent that reads or modifies source code (Reviewer, Fixer, Intent Validator), prepend these instructions to its prompt:
+When spawning the **Fixer**, prepend these instructions to its prompt:
 
 > **Context bootstrap** (do this before your main task):
 > 1. Read `~/.claude/CLAUDE.md` (global instructions) and `$GIT_ROOT/CLAUDE.md` (repo instructions) if they exist. Follow all instructions — repo instructions override global ones.
@@ -95,16 +219,36 @@ When spawning any subagent that reads or modifies source code (Reviewer, Fixer, 
 >    - `docs/agent_index.md` at `$GIT_ROOT`
 >    - If no agent index was found at the above path, glob for `**/agent_index.md` at `$GIT_ROOT` and read any match.
 
+The **Reviewer** and **Intent Validator** do NOT receive this preamble — their respective bundles (`REVIEW_BUNDLE.md`, `INTENT_BUNDLE.md`) already contain the repo + global `CLAUDE.md` and the codebase index excerpt inline.
+
 ---
 
 ## Agent Roles
 
-### Agent 1 — Reviewer (`model: "claude-opus-4-6"`)
+### Agent 1 — Reviewer (`model: $REVIEWER_MODEL`, default `claude-opus-4-7`)
 
 **Role**: Read-only analysis. Do NOT make any changes to files.
 
+**Context bundle (already in your prompt)**:
+
+The review bundle below contains:
+- PR metadata (title, body, base, head, +/- counts)
+- The full PR diff
+- Current contents of every touched file (or `skipped=` markers for binary/generated/deleted files; check `.agent-work/REVIEW_BUNDLE_SKIPPED.txt` if you need the list)
+- Repo `CLAUDE.md`, global `~/.claude/CLAUDE.md`, and the codebase index excerpt
+
+**Do NOT re-read the bundle's contents** via `Read` or `Bash`. Use `Read`/`Grep` only for files NOT in the bundle — typically callers of touched functions or analogous patterns elsewhere in the codebase, and only when the review genuinely needs them.
+
+If the bundle header contains `BUNDLE_TRUNCATED=true`, the per-file contents were dropped due to size. Fall back to `Read` on individual files as needed.
+
+When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/REVIEW_BUNDLE.md)` into the `<BUNDLE>` slot below:
+
+```
+<BUNDLE>
+```
+
 **Instructions**:
-1. Read every file touched by the PR diff. Understand the intent from the PR title and description.
+1. Understand the intent from the PR title and description (in the bundle metadata).
 2. For each problem found, write a structured finding:
    ```
    ### [SEVERITY: critical|major|minor] <short title>
@@ -206,29 +350,44 @@ git push origin <branch>
 
 **Purpose**: Verify that the automated review-fix cycle did not accidentally revert, weaken, or contradict the *original intent* of the PR — the problem the author set out to solve. Reviewers optimise for code quality signals (style, ordering, patterns); this agent optimises for functional correctness of the original fix.
 
+**Context bundle (already in your prompt)**:
+
+The intent bundle below contains:
+- The **pre-loop HEAD SHA** (captured before any Fixer committed)
+- The **pre-loop PR diff** — what the original author wrote
+- The **post-loop commits and diff** — what the automated fix cycles added
+- **Current contents of every file touched by either diff**
+- Repo + global `CLAUDE.md`, codebase index excerpt
+
+**Do NOT re-run `git diff`, `git log`, or `Read` the touched files** — that information is already in your prompt. Use `Read`/`Grep` only if you need to check a caller or invariant in a file NOT listed in the bundle.
+
+If the bundle header contains `INTENT_BUNDLE_DEGRADED=true`, the pre-loop HEAD was unreachable (likely a mid-loop rebase). The diffs in the bundle are reconstructed from the base branch tip, which may include changes the original author didn't write. If you distrust the bundle, you may `Bash git log` yourself — but note the degraded state in your output.
+
+Cross-check: the pre-loop SHA is in the bundle header. If you need to verify the bundle wasn't miscomposed, run `git cat-file -e <sha>^{commit}` and `git diff <sha>..HEAD` directly.
+
+When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/INTENT_BUNDLE.md)` into the `<BUNDLE>` slot below:
+
+```
+<BUNDLE>
+```
+
 **Instructions**:
 
-1. Re-read the original PR description, linked issue(s), and any pre-existing review comments to extract the **stated intent**: what bug was being fixed, what invariant was being established, or what feature was being added.
+1. Re-read the PR metadata in the bundle to extract the **stated intent**: what bug was being fixed, what invariant was being established, or what feature was being added.
 
-2. Fetch the original PR diff (before any commits added by this loop):
-   ```bash
-   git diff <base-branch>...<first-commit-of-loop-or-branch-tip-before-loop>
-   ```
-   If this is not available, use `git log --oneline` to identify commits added during this loop and reconstruct the pre-loop state.
-
-3. For every file touched by both the *original* diff and the *automated fix* commits, compare:
+2. For every file touched by both the *original* diff and the *automated fix* commits, compare:
    - What the original author changed (and *why*, inferred from the PR description).
    - What the automated fixes changed in that same file.
    - Whether the net result still preserves the original author's intent.
 
-4. Classic failure patterns to check explicitly:
+3. Classic failure patterns to check explicitly:
    - **Ordering reversals**: A fix that reorders statements to satisfy a style/lint rule (e.g. imports-before-side-effects) that inadvertently undoes an order-dependent correctness fix (e.g. `load_dotenv()` must run before any import that reads env vars).
    - **Guard removal**: A defensive check added by the author was judged "unnecessary" by a reviewer and removed.
    - **Logic inversion**: A condition was refactored for clarity but its polarity was silently flipped.
    - **Dead code**: The original fix's code path is now unreachable due to a structural change made elsewhere by a fixer.
    - **Config/env neutralisation**: A value set by the original fix (env var, flag, constant) was overwritten or defaulted away by another change.
 
-5. For each concern found, write a structured finding:
+4. For each concern found, write a structured finding:
    ```
    ### [INTENT-RISK: high|medium|low] <short title>
    **ID**: IV-<number>
@@ -240,9 +399,9 @@ git push origin <branch>
    **Recommended action**: Revert specific automated change | Manual review needed | Acceptable tradeoff
    ```
 
-6. If no concerns are found, output: `No intent risks detected — all automated fixes are consistent with the original PR intent.`
+5. If no concerns are found, output: `No intent risks detected — all automated fixes are consistent with the original PR intent.`
 
-7. Output findings to `.agent-work/INTENT_VALIDATION.md`.
+6. Output findings to `.agent-work/INTENT_VALIDATION.md`.
 
 ---
 
@@ -274,6 +433,12 @@ git push origin <branch>
 ---
 
 ## Coordination Flow
+
+When spawning the Reviewer at any of the three spawn sites below (Initial Review, per-cycle Reviewer in the fix loop, Final Review):
+- Pass `model: $REVIEWER_MODEL` in the Agent tool call.
+- Inline the review bundle into the Reviewer's prompt by substituting `$(cat $GIT_ROOT/.agent-work/REVIEW_BUNDLE.md)` into the `<BUNDLE>` slot of the Reviewer agent spec.
+
+The bundle is assembled once in Setup and is reused across all Reviewer spawns in this invocation.
 
 ### Initial Review (if no existing review)
 
@@ -337,6 +502,84 @@ Intent Validation (always runs, no fixes):
 
 **Cycle limit reached**: If `CURRENT_CYCLE > MAX_CYCLES`, stop fix cycles and proceed to Final Review regardless of remaining findings. Any unresolved findings from the last cycle's review are carried into the Outstanding Issues section of the summary.
 
+### Assemble intent bundle
+
+Before spawning the Intent Validator, write `.agent-work/INTENT_BUNDLE.md`:
+
+```bash
+PR_NUM=<pr-number>
+BUNDLE="$GIT_ROOT/.agent-work/INTENT_BUNDLE.md"
+PRE_LOOP="$(cat "$GIT_ROOT/.agent-work/PRE_LOOP_HEAD.sha")"
+BASE_REF="<base-branch>"  # from gh pr view baseRefName
+
+# Verify the pre-loop SHA is still reachable. A mid-loop rebase could have
+# orphaned it. If so, degrade gracefully.
+if ! git -C "$GIT_ROOT" cat-file -e "$PRE_LOOP^{commit}" 2>/dev/null; then
+  DEGRADED=true
+else
+  DEGRADED=false
+fi
+
+{
+  echo "# Intent validation bundle for PR #$PR_NUM"
+  echo
+  echo "- Pre-loop HEAD SHA: \`$PRE_LOOP\`"
+  [ "$DEGRADED" = true ] && echo '- **INTENT_BUNDLE_DEGRADED=true** — pre-loop HEAD unreachable (rebase?); diffs below are reconstructed from base-branch tip instead'
+  echo
+  echo '## Pre-loop PR diff (original author intent)'
+  echo '```diff'
+  cat "$GIT_ROOT/.agent-work/PR_DIFF.txt" 2>/dev/null \
+    || gh pr diff "$PR_NUM"
+  echo '```'
+  echo
+  echo '## Post-loop commits (added by automated fix cycles)'
+  if [ "$DEGRADED" = false ]; then
+    git -C "$GIT_ROOT" log --oneline "$PRE_LOOP..HEAD"
+    echo
+    echo '## Post-loop diff'
+    echo '```diff'
+    git -C "$GIT_ROOT" diff "$PRE_LOOP..HEAD"
+    echo '```'
+  else
+    git -C "$GIT_ROOT" log --oneline "origin/$BASE_REF..HEAD"
+    echo
+    echo '## Post-loop diff (degraded — reconstructed from base)'
+    echo '```diff'
+    git -C "$GIT_ROOT" diff "origin/$BASE_REF..HEAD"
+    echo '```'
+  fi
+  echo
+  echo '## Current contents of files touched by either diff'
+} > "$BUNDLE"
+
+# Union of files in pre-loop PR and post-loop fix commits
+{
+  gh pr view "$PR_NUM" --json files --jq '.files[].path'
+  [ "$DEGRADED" = false ] && git -C "$GIT_ROOT" diff --name-only "$PRE_LOOP..HEAD"
+} | sort -u | while read -r f; do
+  if [[ ! -f "$GIT_ROOT/$f" ]]; then continue; fi
+  if [[ "$f" =~ $BUNDLE_SKIP_PATTERNS ]]; then continue; fi
+  printf '\n<file path="%s">\n```\n' "$f" >> "$BUNDLE"
+  head -n 1000 "$GIT_ROOT/$f" >> "$BUNDLE"
+  printf '\n```\n</file>\n' >> "$BUNDLE"
+done
+
+# Repo context footer (same as REVIEW_BUNDLE)
+{
+  echo
+  echo '## Repo context'
+  [ -f "$GIT_ROOT/CLAUDE.md" ]      && { echo '### $GIT_ROOT/CLAUDE.md'; cat "$GIT_ROOT/CLAUDE.md"; }
+  [ -f "$HOME/.claude/CLAUDE.md" ]  && { echo '### ~/.claude/CLAUDE.md'; cat "$HOME/.claude/CLAUDE.md"; }
+  INDEX="$GIT_ROOT/docs/agent_index.md"
+  [ -f "$INDEX" ]                    && { echo '### docs/agent_index.md (first 200 lines)'; head -n 200 "$INDEX"; }
+} >> "$BUNDLE"
+
+# Apply the 5000-line size cap (same helper as REVIEW_BUNDLE)
+bundle_truncate_if_oversized "$BUNDLE"
+```
+
+When spawning the Intent Validator, inline the intent bundle into its prompt by substituting `$(cat $GIT_ROOT/.agent-work/INTENT_BUNDLE.md)` into the `<BUNDLE>` slot of the Intent Validator agent spec.
+
 ---
 
 ## Final Commit & Push
@@ -371,6 +614,7 @@ After the final commit and push, present in the conversation:
 ## PR Review-Fix Complete: <PR title> (#<number>)
 Branch: <branch> — <N> commits added
 Cycles run: <X> of <MAX_CYCLES> [+ final review] | or: exited early at cycle <N> (no critical/major findings)
+Reviewer model: <$REVIEWER_MODEL><append " (default)" if REVIEWER_MODEL == claude-opus-4-7>
 
 ### Per-Cycle Summary
 #### Cycle 1
@@ -436,6 +680,7 @@ gh pr comment <pr-number> --body "$(cat <<'EOF'
 
 **Cycles run**: <X> of <MAX_CYCLES> [exited early at cycle N | completed all cycles]
 **Commits added**: <N>
+**Reviewer model**: <$REVIEWER_MODEL><append " (default)" if REVIEWER_MODEL == claude-opus-4-7>
 
 ### Final review state
 - Critical findings remaining: <count>
