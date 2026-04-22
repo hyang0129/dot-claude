@@ -6,13 +6,19 @@ version: 1.0.0
 
 ## Purpose
 
-Orchestrate the end-to-end resolution of a GitHub epic issue that decomposes into multiple sub-issues. Creates an epic branch, runs a front-loaded architecture review, then autonomously resolves each sub-issue in sequence — targeting the epic branch instead of `dev`. Produces a final epic PR with comprehensive QA documentation.
+Orchestrate the end-to-end resolution of a GitHub epic issue whose children are already defined. Creates an epic branch, then autonomously resolves each child sub-issue in sequence — targeting the epic branch instead of `dev`. Produces a final epic PR with comprehensive QA documentation.
 
-**This command runs autonomously until completion or a true blocker.** It does not pause for human review between sub-issues. The only human checkpoints are:
+This command does **not** decompose or refine epics. It expects the child sub-issues to already exist, via one of two paths:
 
-1. ADR approval (Step 3) — architecture decisions before any code is written
-2. True blockers — a sub-issue `/resolve-issue` fails and cannot recover
-3. Final epic PR — the one place where human QA and review happen
+- **Refined epic** (primary): `/refine-epic` has already run, produced an intent document, and created child issues. `/resolve-epic` detects the refine-epic handoff and proceeds directly to resolution.
+- **Collection of issues** (lightweight): the epic body contains a GitHub task-list of existing issues (e.g. `- [ ] #123`) that should be resolved together in one epic PR. Typical use: bundling 3-5 related bug fixes into a single merge.
+
+If neither condition is met, the command stops and asks the user to clarify. It will not invoke planning agents on its own — use `/refine-epic` first for real epics.
+
+**Once a path is chosen, this command runs autonomously until completion or a true blocker.** It does not pause for human review between sub-issues. The only human checkpoints are:
+
+1. True blockers — a sub-issue `/resolve-issue` fails and cannot recover
+2. Final epic PR — the one place where human QA and review happen
 
 ---
 
@@ -107,11 +113,11 @@ The orchestrator reads the handoff and sets `GIT_ROOT`, `DEV_BASE`, and `EPIC_BR
 
 ---
 
-## Step 1.5 — Detect `/refine-epic` Handoff
+## Step 1.5 — Detect Epic Type
 
-If `/refine-epic` has already run on this epic, most of Steps 2–4 are redundant: the
-decomposition, child issues, and validated intent already exist. Probe for refine-epic
-artifacts before spawning the planning team.
+`/resolve-epic` supports two input shapes: a refined epic (from `/refine-epic`) or a
+collection of existing issues listed in the epic body. Probe for refine-epic artifacts
+first; if absent, ask the user which path applies.
 
 Spawn a **Refine Detection Agent** (`model: "claude-sonnet-4-6"`).
 
@@ -166,40 +172,112 @@ Set `REFINE_HANDOFF=true` only if **all** of: `INDEX_PRESENT=true`, `INTENT_PRES
 
 ### Orchestrator branch on handoff
 
-- **If `REFINE_HANDOFF=true`**: skip Steps 2, 3, and 4 entirely. Use `CHILD_ISSUES_ORDERED`
-  as the `SUB_ISSUES` list for Step 5. Post a lightweight tracking comment on the epic (same
-  format as Step 4's tracking comment) referencing the existing children, then jump to Step 5.
+- **If `REFINE_HANDOFF=true`** → **Refined-epic path**. Use `CHILD_ISSUES_ORDERED` as the
+  `SUB_ISSUES` list. Spawn a **Tracking Comment Agent** (`model: "claude-sonnet-4-6"`) to
+  post a tracking comment on the epic issue (see format below), then jump to Step 2.
   - The intent document already captures decision priors, invariants, and feared failure modes
-    — the role of the Architect/ADR is already filled. Do NOT spawn an ADR agent unless new
-    cross-cutting questions surface during sub-issue resolution.
-  - Integration seams, risk register, and QA checklist already exist in `index.md`. The Step 7
-    Documentation Agent should read `index.md` and `intent.md` instead of regenerating them.
-  - Smoke tests for each sub-issue come from the child draft's Acceptance Scenarios rather
-    than the decomposition's `Smoke tests` field. Each Smoke Test Runner invocation should
-    read `$EPIC_DIR/child-<N>-<slug>.md` for the relevant child.
+    — no ADR or planning step is needed.
+  - Integration seams, risk register, and QA checklist already exist in `index.md`. The Step 4
+    Documentation Agent reads `index.md` and `intent.md` rather than regenerating them.
+  - Smoke tests for each sub-issue come from the child draft's Acceptance Scenarios. Each
+    Smoke Test Runner invocation reads `$EPIC_DIR/child-<N>-<slug>.md` for the relevant child.
 
-- **If `UNKNOWNS_BLOCKED=true`**: stop and report to the user — refine-epic flagged P0
-  unknowns that must be resolved before implementation. Do not proceed to Step 2.
+- **If `UNKNOWNS_BLOCKED=true`** → stop and report to the user. `/refine-epic` flagged P0
+  unknowns that must be resolved before implementation.
 
-- **If `REFINE_HANDOFF=false`**: proceed to Step 2 as normal (no refine-epic artifacts
-  found, or they are incomplete).
+- **If `REFINE_HANDOFF=false`** → ask the user which shape this epic is, using
+  `AskUserQuestion`:
+
+  > **Epic type** — No `/refine-epic` artifacts were found for this epic. Which path applies?
+  > - **Collection of issues** — the epic body lists existing issues (e.g. a task-list of
+  >   `- [ ] #123` items) that should be resolved together in one epic PR.
+  > - **Real epic (needs refinement)** — this is a substantive epic that hasn't been refined
+  >   yet. Stop and run `/refine-epic <number>` first.
+
+  - **If the user chose "Collection of issues"** → spawn a **Collection Parser Agent**
+    (`model: "claude-sonnet-4-6"`) with these instructions:
+
+    Role: parse epic body for a GitHub task-list referencing existing issues. No source file
+    changes, no issue creation, no git operations.
+
+    1. Fetch the epic body:
+       ```bash
+       gh issue view <number> --repo <REPO> --json body --jq '.body'
+       ```
+    2. Extract issue references from task-list lines. Match lines of the form
+       `- [ ] #<N>` or `- [x] #<N>`, optionally followed by a cross-repo reference like
+       `owner/repo#<N>`. Record them in the order they appear in the body.
+    3. For each extracted issue number, verify it exists and is open:
+       ```bash
+       gh issue view <N> --repo <REPO> --json number,state,title
+       ```
+       Skip any that are closed or not found (note them in the handoff).
+    4. Return ONLY this HANDOFF block:
+       ```
+       HANDOFF
+       CHILD_ISSUES_ORDERED=<comma-delimited open issue numbers in body order, or empty>
+       CHILD_COUNT=<integer>
+       SKIPPED=<comma-delimited numbers that were closed or missing, or empty>
+       END_HANDOFF
+       ```
+
+    After the Collection Parser Agent returns:
+    - **If `CHILD_COUNT=0`** → stop and report to the user: the epic body has no open-issue
+      task-list entries, so there is nothing to resolve. Do not proceed.
+    - **Else** → spawn a **Tracking Comment Agent** to post the tracking comment, then jump
+      to Step 2 using `CHILD_ISSUES_ORDERED` as `SUB_ISSUES`.
+
+  - **If the user chose "Real epic (needs refinement)"** → stop and tell the user to run
+    `/refine-epic <number>` first, then re-run `/resolve-epic`.
+
+### Tracking Comment Agent instructions
+
+Role: post the sub-issue tracking comment on the epic. No source file changes, no issue
+creation, no git operations.
+
+Input from orchestrator: `SUB_ISSUES` list, `EPIC_BRANCH`, and for each sub-issue: number
+and title (fetch titles via `gh issue view <N> --repo <REPO> --json title`).
+
+1. Check whether a tracking comment already exists (resume case):
+   ```bash
+   gh issue view <epic_number> --repo <REPO> --json comments \
+     --jq '[.comments[] | select(.body | test("## Sub-Issues to Resolve"))] | length'
+   ```
+   If the count is > 0, skip posting a new comment and jump to step 3.
+2. Post a tracking comment on the epic:
+   ```bash
+   gh issue comment <epic_number> --repo <REPO> --body "$(cat <<'EOF'
+   ## Sub-Issues to Resolve
+
+   Epic branch: `<EPIC_BRANCH>`
+   Path: <refined-epic | collection-of-issues>
+
+   | # | Issue | Title | Status |
+   |---|-------|-------|--------|
+   | 1 | #<num1> | <title> | pending |
+   | 2 | #<num2> | <title> | pending |
+   | ... | | | |
+
+   Implementation will proceed autonomously. Updates will be posted as each sub-issue completes.
+   EOF
+   )"
+   ```
+3. Return:
+   ```
+   HANDOFF
+   SUB_ISSUES=<num1>,<num2>,...
+   END_HANDOFF
+   ```
 
 ---
 
-## Step 2 — Epic Planning Team
-
-*Skip this step entirely if Step 1.5 returned `REFINE_HANDOFF=true`.*
-
-
-The decomposition of an epic into sub-issues is a critical decision that shapes the entire implementation. A single agent's perspective is insufficient — different concerns (architecture, testing, sequencing, risk) must be weighed against each other.
-
-### Subagent Output Rule
+## Subagent Output Rule
 
 **Every subagent must return ONLY its HANDOFF block — nothing else.** Write all verbose output, summaries, and analysis to `.agent-work/` files. The orchestrator parses HANDOFF blocks only; free-form agent output is never read by the orchestrator. Violating this rule bloats the orchestrator's context window and degrades performance across long epics.
 
-### Subagent Context Bootstrap
+## Subagent Context Bootstrap
 
-When spawning any subagent that reads or modifies source code (Research Agent, Planning Team agents, Synthesis Agent, Architect Agent, Documentation Agent, Integration Fixer, Fix Verifier, Verification Agent), prepend these instructions to its prompt:
+When spawning any subagent that reads or modifies source code (Documentation Agent, Integration Fixer, Fix Verifier, Verification Agent), prepend these instructions to its prompt:
 
 > **Context bootstrap** (do this before your main task):
 > 1. Read `~/.claude/CLAUDE.md` (global instructions) and `$GIT_ROOT/CLAUDE.md` (repo instructions) if they exist. Follow all instructions — repo instructions override global ones.
@@ -208,248 +286,13 @@ When spawning any subagent that reads or modifies source code (Research Agent, P
 >    - `docs/agent_index.md` at `$GIT_ROOT`
 >    - If no agent index was found at the above path, glob for `**/agent_index.md` at `$GIT_ROOT` and read any match.
 
-Do **not** add this bootstrap to narrow utility agents (Setup Agent, Issue Creation Agent, Merge & Sync Agent, Smoke Test Runner, Full Test Runner, Poll Agent, Mermaid Agent).
-
-### Phase 2a — Research Agent (`model: "claude-opus-4-6"`)
-
-Before the planning team debates, one agent gathers the raw facts.
-
-Role: read-only codebase research. No file writes except the research document.
-
-1. Read the epic issue body and all comments in full.
-2. Read project instructions and codebase index files:
-   - Read `~/.claude/CLAUDE.md` (global instructions) and `$GIT_ROOT/CLAUDE.md` (repo instructions) if they exist. Follow all instructions — repo instructions override global ones.
-   - `.codesight/CODESIGHT.md` at `$GIT_ROOT`
-   - `docs/agent_index.md` at `$GIT_ROOT`
-   - If no agent index was found at `docs/agent_index.md`, glob for `**/agent_index.md` at `$GIT_ROOT` and read any match.
-3. Search the codebase exhaustively for all areas mentioned in the epic — grep for symbols, read affected files, map dependencies between them.
-4. Produce `.agent-work/EPIC_<number>_RESEARCH.md`:
-   ```markdown
-   # Epic Research: <title> (#<number>)
-
-   ## Codebase Inventory
-   [For each area the epic touches: file paths, current line counts, key functions/classes,
-   dependencies on other modules, and current test coverage]
-
-   ## Dependency Map
-   [Which files import/call which — enough for the planning team to judge sequencing]
-
-   ## Existing Patterns
-   [Current conventions, abstractions, or utilities that the epic should build on or replace]
-
-   ## Risk Areas
-   [Files with high fan-out, shared interfaces, complex state, or no test coverage]
-   ```
-
-### Phase 2b — Planning Team Debate (parallel, all `model: "claude-opus-4-6"`)
-
-Spawn 4-5 agents in parallel, each with a different perspective. All receive the epic issue body and `.agent-work/EPIC_<number>_RESEARCH.md` as input.
-
-| Agent | Perspective | Key question |
-|-------|-------------|-------------|
-| **Decomposition Architect** | System boundaries, module coupling, interface design | How should this epic be sliced so each sub-issue has clean boundaries and doesn't require rework when the next sub-issue lands? |
-| **Sequencing Strategist** | Build order, incremental value, merge safety | What implementation order minimizes risk of integration failures? Which sub-issue should land first to de-risk the rest? |
-| **Testing & QA Advocate** | Testability, regression risk, validation strategy | How do we ensure each sub-issue leaves the system in a testable state? What visual/integration/regression checks are needed? |
-| **Risk & Rollback Analyst** | Failure modes, reversibility, blast radius | What can go wrong at each stage? If a sub-issue fails, can we roll back cleanly? Where are the points of no return? |
-| **Scope Guardian** | Scope creep, minimal viable slicing, YAGNI | Is every proposed sub-issue necessary for the epic's acceptance criteria? Are we over-engineering the decomposition? |
-
-Each agent produces a **200-300 word position paper** (`model: "claude-opus-4-6"`) addressing:
-1. Their proposed sub-issue decomposition (ordered list with titles and 1-line scopes)
-2. Architecture questions they believe must be resolved before implementation
-3. One risk or concern the other perspectives might miss
-4. Their recommended QA checks for the final epic PR
-
-Output: `.agent-work/EPIC_<number>_POSITION_<role>.md` for each agent.
-
-### Phase 2c — Synthesis Agent (`model: "claude-opus-4-6"`)
-
-After all position papers are complete, spawn a **Synthesis Agent** that reads all of them and produces the final decomposition.
-
-Role: read all position papers, resolve disagreements, produce the canonical plan.
-
-1. Read all `.agent-work/EPIC_<number>_POSITION_*.md` files.
-2. Identify areas of agreement and disagreement across the planning team.
-3. For disagreements, choose the approach that best balances:
-   - Clean sub-issue boundaries (Decomposition Architect)
-   - Safe sequencing (Sequencing Strategist)
-   - Testability at each stage (Testing Advocate)
-   - Minimal blast radius (Risk Analyst)
-   - Scope discipline (Scope Guardian)
-4. Document why dissenting views were not adopted (briefly).
-
-Produce `.agent-work/EPIC_<number>_DECOMPOSITION.md`:
-
-```markdown
-# Epic Decomposition: <title> (#<number>)
-
-## Overview
-[2-3 sentences: what the epic achieves and the decomposition strategy]
-
-## Planning Team Consensus
-[Brief summary of where agents agreed and where they diverged.
-For disagreements: which approach was chosen and why.]
-
-## Architecture Questions (for front-loaded ADR)
-[Questions that span multiple sub-issues and must be decided before implementation.
-Aggregated from all position papers — deduplicated and prioritized.
-If none: "No cross-cutting architecture questions — proceed directly to implementation."]
-- Q1: <question> — raised by: <agent(s)>
-- Q2: <question> — raised by: <agent(s)>
-
-## Sub-Issues (implementation order)
-
-### Sub-Issue 1: <title>
-**Depends on**: none (first in sequence)
-**Estimated tier**: 1 | 2
-**Scope**:
-- [bullet list of what this sub-issue implements]
-**Files likely affected**:
-- [file paths]
-**Acceptance criteria**:
-- [ ] <criterion>
-**Testable state after merge**: [what should work / pass after this sub-issue lands]
-**Smoke tests**: [specific commands or checks to run after merging this sub-issue into the epic branch — e.g. `pytest tests/test_thumbnail.py`, `python -c "from module import X"`, `ruff check src/`]
-
-### Sub-Issue 2: <title>
-**Depends on**: Sub-Issue 1
-**Estimated tier**: 1 | 2
-...
-
-## Epic-Level Acceptance Criteria
-[From the original epic issue — these are verified at the end against the full epic branch]
-- [ ] <criterion>
-
-## QA Checklist (for final epic PR)
-[Aggregated from all position papers + synthesis agent's judgment.
-What a human reviewer should verify when reviewing the epic branch → dev PR.]
-- [ ] <check>
-
-## Risk Register
-[Key risks identified by the planning team, with mitigations]
-| Risk | Severity | Mitigation | Raised by |
-|------|----------|------------|-----------|
-| ... | high/medium/low | ... | <agent> |
-```
-
-The Synthesis Agent must return ONLY this HANDOFF block (all detail goes to the decomposition file):
-```
-HANDOFF
-HAS_ARCH_QUESTIONS=<true|false>
-SUB_ISSUE_COUNT=<N>
-SUB_ISSUE_TITLES=<title1>|<title2>|... (pipe-delimited, in implementation order)
-END_HANDOFF
-```
-
-The orchestrator parses the HANDOFF block. It does not read the decomposition file directly.
+Do **not** add this bootstrap to narrow utility agents (Setup Agent, Refine Detection Agent, Collection Parser Agent, Tracking Comment Agent, Merge & Sync Agent, Smoke Test Runner, Full Test Runner, Poll Agent, Mermaid Agent).
 
 ---
 
-## Step 3 — Front-Loaded ADR (if architecture questions exist)
+## Step 2 — Sequential Sub-Issue Resolution
 
-*Skip this step if Step 1.5 returned `REFINE_HANDOFF=true` — the refine-epic intent document
-already captures resolved Decision Priors and Invariants. Only run ADR for net-new questions.*
-
-
-If the Synthesis Agent handoff returned `HAS_ARCH_QUESTIONS=true`, spawn an **Architect Agent** (`model: "claude-opus-4-6"`).
-
-### Architect Agent instructions
-
-Same role and output format as the `/fix-issue` Step 2b Architect, but scoped to the entire epic:
-
-1. Read `.agent-work/EPIC_<number>_DECOMPOSITION.md` and the full epic issue.
-2. For each architecture question, research options by reading relevant code, docs, and existing patterns.
-3. Produce `.agent-work/EPIC_<number>_ADR.md` (same ADR format as `/fix-issue`).
-4. Post the ADR as checkboxes on the epic issue (same format as `/fix-issue` Step 2b) using `gh issue comment`.
-5. Return handoff:
-   ```
-   HANDOFF
-   ADR_POSTED=true
-   END_HANDOFF
-   ```
-
-**STOP after the Architect completes.** The orchestrator waits for APPROVED/REJECT on the epic issue. Poll for comments containing "APPROVED" or "REJECT" using `gh` via a **Poll Agent** (`model: "haiku"`) that checks every 60 seconds and returns the result.
-
-If the decomposition has **no** architecture questions, skip this step entirely and proceed to Step 4.
-
----
-
-## Step 4 — Create Sub-Issues on GitHub
-
-*Skip this step if Step 1.5 returned `REFINE_HANDOFF=true` — refine-epic already created the
-child issues. Use `CHILD_ISSUES_ORDERED` as the sub-issue list and post only the tracking
-comment on the epic.*
-
-
-Spawn an **Issue Creation Agent** (`model: "claude-sonnet-4-6"`) to create the sub-issues and post the tracking comment.
-
-### Issue Creation Agent instructions
-
-Role: create GitHub issues and post comments. No source file changes, no git operations.
-
-1. Read `.agent-work/EPIC_<number>_DECOMPOSITION.md` for the sub-issue list.
-2. Read `.agent-work/EPIC_<number>_ADR.md` if it exists.
-3. For each sub-issue in the decomposition, create a GitHub issue:
-   ```bash
-   gh issue create --repo <REPO> \
-     --title "<sub-issue title>" \
-     --body "$(cat <<'EOF'
-   Part of epic #<number>
-
-   ## Context
-   This is sub-issue <N> of <total> for the rendering pipeline epic.
-   Parent epic: #<number>
-   Epic branch: `<EPIC_BRANCH>`
-   <If ADR exists: Architecture decisions: see epic #<number> ADR comment>
-
-   ## Scope
-   <scope bullets from decomposition>
-
-   ## Files likely affected
-   <file list from decomposition>
-
-   ## Acceptance criteria
-   <criteria from decomposition>
-
-   ## Constraints
-   - Branch off and PR into `<EPIC_BRANCH>` (not dev)
-   - Follow architecture decisions from epic ADR
-   - Do not modify files outside the scope listed above
-   EOF
-   )"
-   ```
-4. Collect the created issue numbers into an ordered list.
-5. Post a tracking comment on the epic:
-   ```bash
-   gh issue comment <number> --repo <REPO> --body "$(cat <<'EOF'
-   ## Sub-Issues Created
-
-   Epic branch: `<EPIC_BRANCH>`
-
-   | # | Issue | Title | Status |
-   |---|-------|-------|--------|
-   | 1 | #<num1> | <title> | pending |
-   | 2 | #<num2> | <title> | pending |
-   | 3 | #<num3> | <title> | pending |
-   | ... | | | |
-
-   Implementation will proceed autonomously. Updates will be posted as each sub-issue completes.
-   EOF
-   )"
-   ```
-6. Return the handoff block:
-   ```
-   HANDOFF
-   SUB_ISSUES=<num1>,<num2>,<num3>,...
-   END_HANDOFF
-   ```
-
-The orchestrator reads the `SUB_ISSUES` list for Step 5.
-
----
-
-## Step 5 — Sequential Sub-Issue Resolution
-
-### 5a — Resume Check
+### 2a — Resume Check
 
 Before starting the loop, spawn a **Resume Agent** (`model: "claude-sonnet-4-6"`) to determine where to start.
 
@@ -457,9 +300,9 @@ Before starting the loop, spawn a **Resume Agent** (`model: "claude-sonnet-4-6"`
 
 Role: state detection only. No source file changes, no git changes.
 
-1. Read the epic issue's tracking comment to get the ordered sub-issue list. The tracking comment was posted in Step 4 and contains a table with issue numbers and titles.
+1. Read the epic issue's tracking comment to get the ordered sub-issue list. The tracking comment was posted in Step 1.5 and contains a table with issue numbers and titles.
    ```bash
-   gh issue view <epic_number> --repo <REPO> --json comments --jq '.comments[].body' | grep -A 50 "Sub-Issues Created"
+   gh issue view <epic_number> --repo <REPO> --json comments --jq '.comments[].body' | grep -A 50 "Sub-Issues to Resolve"
    ```
 
 2. For each sub-issue in the list, check whether it has a merged PR targeting the epic branch:
@@ -477,16 +320,9 @@ Role: state detection only. No source file changes, no git changes.
    gh pr close <pr_number> --repo <REPO> --comment "Epic workflow interrupted — closing this PR for clean resume. The sub-issue will be re-worked from the current epic branch state."
    ```
 
-4. Check whether the ADR was already approved by scanning the epic issue's comments for "APPROVED":
-   ```bash
-   gh issue view <epic_number> --repo <REPO> --json comments --jq '[.comments[].body | select(test("APPROVED"))] | length'
-   ```
-   ADR is approved if the count is > 0.
-
-5. Return ONLY this HANDOFF block:
+4. Return ONLY this HANDOFF block:
    ```
    HANDOFF
-   ADR_ALREADY_APPROVED=<true|false>
    COMPLETED_SUB_ISSUES=<comma-delimited issue numbers that are done, empty if none>
    FIRST_PENDING_SUB_ISSUE=<issue number of first incomplete sub-issue, or empty if all done>
    OPEN_PRS_CLOSED=<comma-delimited PR numbers that were closed, empty if none>
@@ -494,13 +330,12 @@ Role: state detection only. No source file changes, no git changes.
    ```
 
 The orchestrator reads the Resume Agent HANDOFF and:
-- Skips Step 3 (ADR) if `ADR_ALREADY_APPROVED=true`
 - Skips all sub-issues in `COMPLETED_SUB_ISSUES`
 - Starts the loop from `FIRST_PENDING_SUB_ISSUE`
-- If `FIRST_PENDING_SUB_ISSUE` is empty, all sub-issues are done — skip to Step 6
+- If `FIRST_PENDING_SUB_ISSUE` is empty, all sub-issues are done — skip to Step 3
 - If any `OPEN_PRS_CLOSED` were found, note them in the resume log
 
-### 5b — Resolution Loop
+### 2b — Resolution Loop
 
 For each sub-issue in order (starting from `FIRST_PENDING_SUB_ISSUE`), spawn a `/resolve-issue` Agent subagent (`model: "claude-opus-4-6"`):
 
@@ -570,14 +405,16 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
 
    Role: execute smoke tests, evaluate results, report pass/fail. No source file changes.
 
-   1. Read `.agent-work/EPIC_<number>_DECOMPOSITION.md` to find the smoke test commands for this sub-issue.
+   1. Determine sub-issue-specific smoke test commands based on the epic path:
+      - **Refined-epic path**: read `$EPIC_DIR/child-<N>-<slug>.md` and derive smoke commands from its Acceptance Scenarios.
+      - **Collection-of-issues path**: no custom smoke tests — skip step 3a and rely on the cumulative checks (3b and 3c) alone.
    2. Read the list of all files changed on the epic branch so far:
       ```bash
       git diff "origin/$DEV_BASE"..."$EPIC_BRANCH" --name-only
       ```
    3. Execute tests in order, capturing all output:
       ```bash
-      # a) Sub-issue-specific smoke tests from the decomposition plan
+      # a) Sub-issue-specific smoke tests (refined-epic path only; skip for collection path)
       <smoke test commands for this sub-issue>
 
       # b) Cumulative: full compile/typecheck/lint (fast checks only)
@@ -697,7 +534,7 @@ Wait for the subagent to complete. Parse the `HANDOFF` block.
    2. Read callers and dependents of changed functions.
    3. Verify:
       - The fix addresses the diagnosed root cause
-      - The fix does not contradict any ADR decisions
+      - The fix does not contradict any Decision Priors / Invariants in `$EPIC_DIR/intent.md` (refined-epic path only)
       - The fix does not revert or weaken any sub-issue's intent
       - No new issues are introduced in the surrounding code
    4. Output: `VERIFIED` or `CONCERNS: <list>`.
@@ -773,11 +610,11 @@ Action required: resolve the blocker on #<sub_issue_number>, then re-run:
 
 ---
 
-## Step 6 — Epic Validation
+## Step 3 — Epic Validation
 
 After all sub-issues are resolved and merged into the epic branch, run two validation agents.
 
-### 6a — Full Test Runner (`model: "claude-sonnet-4-6"`)
+### 3a — Full Test Runner (`model: "claude-sonnet-4-6"`)
 
 Spawn a **Full Test Runner** agent to execute the complete validation suite on the epic branch.
 
@@ -826,7 +663,7 @@ END_HANDOFF
 
 The orchestrator parses the HANDOFF. If `OVERALL=FAIL`, report as a blocker — do not attempt automated fixes at the epic level. Include `FAILING_CHECKS` so the user can diagnose.
 
-### 6b — Verification Agent (`model: "claude-opus-4-6"`)
+### 3b — Verification Agent (`model: "claude-opus-4-6"`)
 
 Spawn only if the Full Test Runner HANDOFF returned `OVERALL=PASS`.
 
@@ -853,7 +690,7 @@ The orchestrator parses the HANDOFF. If `ALL_CRITERIA_MET=false`, report which c
 
 ---
 
-## Step 7 — Epic PR
+## Step 4 — Epic PR
 
 Create the final PR from the epic branch into `<DEV_BASE>`:
 
@@ -869,8 +706,11 @@ Role: read-only research + PR body creation. No source file modifications.
    git diff "origin/$DEV_BASE"..."origin/$EPIC_BRANCH"
    ```
 2. Read the original epic issue, all sub-issues, and their PRs.
-3. Read `.agent-work/EPIC_<number>_DECOMPOSITION.md`, `.agent-work/EPIC_<number>_ADR.md` (if exists), and `.agent-work/EPIC_<number>_VERIFICATION.md`.
-4. Collect all sub-issue numbers from the decomposition (or the tracking comment on the epic issue). You will need them to emit `Closes` keywords for each one.
+3. Read context artifacts:
+   - Always: `.agent-work/EPIC_<number>_VERIFICATION.md`.
+   - Refined-epic path: `$EPIC_DIR/intent.md` and `$EPIC_DIR/index.md` (decision priors, integration seams, risk register, QA checklist).
+   - Collection-of-issues path: no planning artifacts exist — derive summary from the epic body and each child issue directly.
+4. Collect all sub-issue numbers from the tracking comment on the epic issue. You will need them to emit `Closes` keywords for each one.
 5. Produce the PR body.
 
 ```bash
@@ -898,8 +738,8 @@ Closes #<sub_num2>
 
 ## Architecture Decisions
 
-<If ADR exists: summarize the key decisions and their rationale from the ADR.>
-<If no ADR: "No cross-cutting architecture decisions were needed.">
+<If refined-epic path: summarize the key Decision Priors from `intent.md` and any cross-cutting choices they drove.>
+<If collection-of-issues path: "No cross-cutting architecture decisions — this epic bundled independent issues.">
 
 ## Implementation Walkthrough
 
@@ -941,9 +781,9 @@ Same as `/fix-issue` — after the Documentation Agent produces the PR body with
 
 ---
 
-## Step 8 — Resume Support
+## Step 5 — Resume Support
 
-Resume is handled automatically by Step 5a (Resume Check). When `/resolve-epic` is re-run on an epic that already has an epic branch and sub-issues:
+Resume is handled automatically by Step 2a (Resume Check). When `/resolve-epic` is re-run on an epic that already has an epic branch and sub-issues:
 
 1. Detect existing epic branch:
    ```bash
@@ -951,9 +791,9 @@ Resume is handled automatically by Step 5a (Resume Check). When `/resolve-epic` 
    ```
    If the branch exists, skip Step 1's branch creation (Setup Agent still runs to establish `GIT_ROOT`, `DEV_BASE`, and `EPIC_BRANCH`).
 
-2. Detect existing sub-issues from the tracking comment on the epic issue (Step 4 posts this). If the tracking comment exists, skip Steps 2–4 entirely and jump to Step 5.
+2. Step 1.5 still runs — the Refine Detection Agent probes for artifacts, and if a tracking comment already exists on the epic, the branching logic picks the same path as before (refined or collection). No duplicate tracking comment is posted if one already exists.
 
-3. Step 5a (Resume Check) handles the rest: detecting completed sub-issues, closing any stale open PRs, checking ADR approval, and finding the first pending sub-issue.
+3. Step 2a (Resume Check) handles the rest: detecting completed sub-issues, closing any stale open PRs, and finding the first pending sub-issue.
 
 ---
 
@@ -971,8 +811,8 @@ Sub-issues: <completed>/<total>
 - #<num2> — <title> ✓ (PR #<pr2>)
 - ...
 
-### Architecture Decisions
-<summary or "None">
+### Path
+<refined-epic | collection-of-issues>
 
 ### Epic Acceptance Criteria
 - [x] <criterion>
@@ -996,7 +836,8 @@ See PR for full checklist — human review required before merge into <DEV_BASE>
 - One epic branch per epic. One epic PR into `<DEV_BASE>`.
 - Sub-issue PRs target the epic branch, not `<DEV_BASE>`.
 - Sub-issue PRs are squash-merged into the epic branch automatically after `/resolve-issue` succeeds.
-- The only human checkpoints are: ADR approval (Step 3) and final epic PR review (Step 7).
+- The only human checkpoints are: epic-type disambiguation (Step 1.5, only when no refine-epic artifacts exist) and final epic PR review (Step 4).
+- `/resolve-epic` does not decompose epics. Decomposition is `/refine-epic`'s job. If neither a refine-epic handoff nor an existing issue task-list is available, the command stops rather than inferring structure.
 - If blocked, stop immediately and report. Do not attempt to skip sub-issues or work around failures.
 - Never merge the epic branch into `<DEV_BASE>` — only create the PR. Human merges it.
 - Never use `--admin` or bypass branch protection.
