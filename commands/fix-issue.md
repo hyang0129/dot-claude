@@ -255,12 +255,12 @@ complete (during Steps 2–6):
    ```
 3. Continue executing the original plan to completion.
 4. If the user insists, note their request but **still complete the current plan first** — then
-   mention the deferred items in the PR's "Outstanding items" section.
+   mention the deferred items in your final summary so the user can open a follow-up issue.
 
 ### Why this matters
 
 Incorporating ad-hoc scope changes mid-process causes downstream steps (Documentation Agent,
-Reviewer, PR body generation) to receive an inconsistent view of what was planned vs. what was
+PR body generation) to receive an inconsistent view of what was planned vs. what was
 implemented. This leads to missing or incomplete artifacts — the structured pipeline depends on
 the plan being stable from Step 2 onward.
 
@@ -268,7 +268,7 @@ the plan being stable from Step 2 onward.
 
 ## Subagent Context Bootstrap
 
-When spawning any subagent that reads or modifies source code (Planner, Architect, Coder, Tester, Integrator, Reviewer, Documentation Agent), prepend these instructions to its prompt:
+When spawning any subagent that reads or modifies source code (Planner, Architect, Coder, Tester, Integrator, Documentation Agent), prepend these instructions to its prompt:
 
 > **Context bootstrap** (do this before your main task):
 > 1. Read `~/.claude/CLAUDE.md` (global instructions) and `$GIT_ROOT/CLAUDE.md` (repo instructions) if they exist. Follow all instructions — repo instructions override global ones.
@@ -309,7 +309,7 @@ If a `tier` argument was passed, use that. Otherwise state your assessment and t
 
 ## Step 2 — Planning
 
-Regardless of tier, spawn a **Planner agent** first (`model: "claude-opus-4-6"`).
+Regardless of tier, spawn a **Planner agent** first (`model: "claude-sonnet-4-6"`).
 
 ### Planner agent instructions
 
@@ -323,7 +323,7 @@ Role: read-only research. No file writes except the plan document.
    - If no agent index was found at `docs/agent_index.md`, glob for `**/agent_index.md` at `$GIT_ROOT` and read any match.
 3. Search the codebase for all affected files:
    - Grep for symbols, function names, patterns mentioned in the issue
-   - Read the files most likely involved
+   - Read the files most likely involved. When a file is >300 lines, use Read with offset/limit to load only the section Grep identified — do not Read entire test fixtures, lockfiles, or generated code. Whole-file Reads are only for short files or when you genuinely need the full context.
 3. Produce `.agent-work/ISSUE_<number>_PLAN.md` containing:
    ```markdown
    # Plan: <issue title> (#<number>)
@@ -484,7 +484,7 @@ EOF
 
 Use the task list from `.agent-work/ISSUE_<number>_PLAN.md` (updated with ADR outcomes if Tier 3).
 
-For each task, spawn the assigned agent with the full task spec. Use `model: "claude-sonnet-4-6"` for Coder, Tester, and Integrator agents; use `model: "claude-opus-4-6"` for Reviewer agents:
+For each task, spawn the assigned agent with the full task spec. Use `model: "claude-sonnet-4-6"` for Coder, Tester, and Integrator agents:
 
 ```
 Issue: #<number> — <title>
@@ -531,11 +531,11 @@ EOF
 )"
 ```
 
-### Tier 1 — single Coder, then Reviewer
+### Tier 1 — single Coder
 
 Spawn agents sequentially:
 ```
-Coder → [binary checks] → commit → Reviewer
+Coder → [binary checks] → commit
 ```
 
 ### Tier 2 — parallel Coders + Tester, then Integrator
@@ -543,7 +543,7 @@ Coder → [binary checks] → commit → Reviewer
 Spawn Wave 1 agents in parallel. Wait for all to finish.
 Run binary checks (compile, lint, typecheck, tests).
 If checks pass, **commit Wave 1 changes**, then spawn Integrator.
-After integration passes checks, **commit integration changes**, then spawn Reviewer.
+After integration passes checks, **commit integration changes**.
 
 ### Tier 3 — task queue with waves
 
@@ -553,7 +553,7 @@ For each wave in order:
 3. Run binary checks. If checks fail, stop: re-assign failing files to the same agent with the error as context (max 1 retry). If still failing, stop and report to user.
 4. When checks pass, **commit that wave's changes** before advancing.
 5. Only advance to the next wave after the commit succeeds.
-After all waves: Integrator (commit after integration passes checks), then Reviewers in parallel (correctness / security / performance — one lens per invocation).
+After all waves: Integrator (commit after integration passes checks).
 
 ---
 
@@ -579,38 +579,9 @@ If any check fails: identify the failing file(s), re-assign to the responsible a
 
 ---
 
-## Step 5 — Reviewer
-
-After all checks pass, spawn the **Reviewer agent** (`model: "claude-opus-4-6"`).
-
-### Reviewer agent instructions
-
-Role: read-only. Do NOT make any file changes.
-
-1. Read all files changed in this branch:
-   ```bash
-   git diff <BASE>...HEAD --name-only
-   git diff <BASE>...HEAD
-   ```
-2. Read the original issue and acceptance criteria from the plan.
-3. For each finding, write:
-   ```
-   ### [SEVERITY: critical|major|minor] <short title>
-   **File**: path/to/file:line
-   **Problem**: what is wrong and why it matters
-   **Fix**: concrete recommendation
-   ```
-4. Categories to check: correctness, missing tests, security, edge cases, scope creep (changes beyond the issue), breaking changes.
-5. Output `.agent-work/ISSUE_<number>_REVIEW.md`.
-
-After the Reviewer finishes:
-- **Critical or major findings**: apply targeted fixes, re-run binary checks, **commit the fixes**, then re-run Reviewer (max 2 review iterations).
-- **Minor findings only**: apply at discretion, commit if any changes were made; do not re-run Reviewer.
-- If after 2 review iterations critical/major findings remain, include them in the PR description as known outstanding items.
-
----
-
 ## Step 5b — E2E QA (Playwright repos only)
+
+After Step 4 validation passes, run E2E QA if the repo has Playwright tests.
 
 First, resolve the E2E directory:
 
@@ -645,17 +616,17 @@ Wait for `/e2e-qa` to complete. Its Reporter posts a summary comment to the PR a
 
 **Gate on verdict:**
 - `VERDICT=PASS` → proceed to Step 6.
-- `VERDICT=FAIL` → **do not mark the PR ready.** Stop and report to the user:
+- `VERDICT=FAIL` → stop and report to the user:
   ```
   E2E QA failed for PR #<PR_NUMBER>. Fix the failing tests or app bugs reported by /e2e-qa,
   then re-run Step 5b before proceeding.
   PR: <PR_URL>
   ```
-  Do not call `gh pr ready` until `/e2e-qa` returns `PASS`.
+  Do not push or update the PR body until `/e2e-qa` returns `PASS`.
 
 ---
 
-## Step 6 — Push and Mark PR Ready
+## Step 6 — Push (PR stays in draft)
 
 All implementation changes were committed incrementally after each step. Verify no uncommitted changes remain:
 ```bash
@@ -677,11 +648,11 @@ EOF
 Verify PR checklist before pushing:
 - [ ] All binary checks pass
 - [ ] All acceptance criteria from the plan are met
-- [ ] Reviewer findings addressed or documented
 - [ ] Only files in-scope for this issue were modified (`git diff <BASE>...HEAD --name-only`)
 - [ ] E2E QA passed (`/e2e-qa` verdict PASS), or repo has no Playwright infrastructure
 
-Push commits and update the draft PR body, then mark it ready for review:
+Push commits and update the draft PR body. **The PR stays in draft** — review and the ready-flip happen separately via `/pr-review-cycle`.
+
 ```bash
 git push
 gh pr edit <PR_NUMBER> --repo <owner/repo> \
@@ -693,19 +664,20 @@ Closes #<number>
 [bullet summary of implementation approach]
 
 ## Tier / approach
-Tier <N> — [Planner → Coder → Reviewer | parallel Coders + Integrator | DAG with N waves]
+Tier <N> — [Planner → Coder | parallel Coders + Integrator | DAG with N waves]
 
 ## Acceptance criteria
 - [ ] <criterion>
 - [ ] <criterion>
 
-## Outstanding items
-[any minor review findings deferred, or "None"]
-
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
-gh pr ready <PR_NUMBER> --repo <owner/repo>
+
+# PR is intentionally left in draft. The user runs:
+#   /pr-review-cycle <PR_NUMBER>
+# to review the PR. That skill does not flip draft state either — the
+# user marks it ready manually when satisfied.
 ```
 
 ---
@@ -802,17 +774,13 @@ note it briefly so reviewers don't wonder.
 
 ## Tier / approach
 
-Tier <N> — <Planner → Coder → Reviewer | parallel Coders + Integrator | DAG with N waves>
+Tier <N> — <Planner → Coder | parallel Coders + Integrator | DAG with N waves>
 
 ## Acceptance criteria
 
 <from .agent-work/ISSUE_<number>_PLAN.md>
 - [x] <criterion>
 - [x] <criterion>
-
-## Outstanding items
-
-<any minor review findings deferred, or "None">
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -884,20 +852,14 @@ PR: <url>
 - Coder A/B/C (list actual tasks)
 - Tester
 - Integrator (Tier 2/3)
-- Reviewer
 
 ### Acceptance criteria
 - [x] <met criterion>
 - [x] <met criterion>
 - [ ] <any unmet — with note>
 
-### Review findings
-- Critical: <count fixed> fixed, <count deferred> deferred
-- Major: <count fixed> fixed, <count deferred> deferred
-- Minor: <count fixed> fixed, <count deferred> deferred
-
-### Outstanding items
-[anything not resolved, or "None"]
+### Next step
+PR is in draft. Run `/pr-review-cycle <PR_NUMBER>` to review, then mark ready when satisfied.
 ```
 
 ---
