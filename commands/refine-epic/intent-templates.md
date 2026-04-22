@@ -1,3 +1,7 @@
+---
+version: 1.0.0
+---
+
 # Intent Document Templates
 
 Schemas for the intent artifacts ROOT writes. Load this file only when writing the

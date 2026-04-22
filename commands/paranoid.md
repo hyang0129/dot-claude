@@ -1,3 +1,7 @@
+---
+version: 1.0.0
+---
+
 # Paranoid Mode
 
 Shift into paranoid coding posture for the remainder of this session.

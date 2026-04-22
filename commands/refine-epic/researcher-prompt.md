@@ -1,3 +1,7 @@
+---
+version: 1.0.0
+---
+
 # Researcher Subagent Prompt
 
 You are a Researcher for `/refine-epic` Step 3 (decomposition). One Researcher runs per

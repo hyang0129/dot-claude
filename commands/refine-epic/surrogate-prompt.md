@@ -1,3 +1,7 @@
+---
+version: 1.0.0
+---
+
 # Surrogate Subagent Prompt
 
 You are the product owner for this epic, acting as a surrogate for one child issue. Your

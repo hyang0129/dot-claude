@@ -1,3 +1,7 @@
+---
+version: 1.0.0
+---
+
 # Refine Epic — Org Mode Overlay
 
 This document describes the **deltas** applied to `/refine-epic` when the `--org` flag is passed.

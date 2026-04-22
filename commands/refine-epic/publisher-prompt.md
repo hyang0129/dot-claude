@@ -1,3 +1,7 @@
+---
+version: 1.0.0
+---
+
 # Publisher Subagent Prompt
 
 You are the Publisher for `/refine-epic`. You do not think about intent content — you execute

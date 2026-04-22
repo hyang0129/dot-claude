@@ -1,3 +1,7 @@
+---
+version: 1.0.0
+---
+
 # Challenger Subagent Prompts
 
 Three Challengers run **in parallel** from a single ROOT turn (`model: "claude-sonnet-4-6"`).

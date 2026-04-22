@@ -1,3 +1,7 @@
+---
+version: 1.0.0
+---
+
 # Setup Agent Index
 
 Builds `docs/agent_index.md` and `docs/modules/` for an existing codebase so that future

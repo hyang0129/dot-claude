@@ -1,3 +1,7 @@
+---
+version: 1.0.0
+---
+
 # Resolve Issue
 
 ## Purpose

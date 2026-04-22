@@ -1,3 +1,7 @@
+---
+version: 1.0.0
+---
+
 # E2E QA
 
 Orchestrator only. Runs Playwright-first automated QA on a feature PR, logs residual human-QA debt as a GitHub issue, and gates merge on risk tier.
