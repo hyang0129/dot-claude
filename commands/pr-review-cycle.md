@@ -252,7 +252,7 @@ When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/REVIEW_BUNDLE.md)`
 ```
 
 **Instructions**:
-1. Understand the intent from the PR title and description (in the bundle metadata).
+1. Understand the intent from the PR title and description (in the bundle metadata). Also extract **documented intent signals**: docstrings containing phrases like "by design", "intentionally", "permissive", "do not enforce", "not an error", or equivalent; explicit design statements in the PR body; and any linked issue if the PR body includes a `Closes #N` / `Fixes #N` reference. Collect these signals before reading the diff.
 2. For each problem found, write a structured finding:
    ```
    ### [SEVERITY: critical|major|minor] <short title>
@@ -264,6 +264,7 @@ When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/REVIEW_BUNDLE.md)`
    **Parallelizable**: [yes/no] Can this be fixed independently of other findings?
    **Conflicts with**: [list of finding IDs that touch the same lines/functions, or "none"]
    ```
+   Before writing any finding: if the flagged behavior is covered by a documented intent signal (step 1), set **Decision required**: yes and state *which signal* it conflicts with. Do not treat undocumented-ness as evidence of a bug — only flag absence of documentation as a finding if documentation is explicitly required by the repo's conventions.
 3. Categories to check: bugs, logic errors, security issues, missing error handling, missing tests, naming/style, scope creep, breaking changes.
 4. Scope check: flag anything unrelated to the PR's stated purpose — note it, do not fix it.
 5. Pattern consistency: for any new code that parallels an existing function, endpoint, or migration, identify the closest analogue and confirm the new code replicates its correctness properties — guards, operation ordering, conditional field population, idempotency. Unexplained divergence from an established pattern is a Major finding.
@@ -316,6 +317,7 @@ For each batch in order:
 After each batch completes:
 - Verify no fix in the batch broke another (re-read touched files, run tests if detectable).
 - For every Critical or Major finding, confirm its `.agent-work/FIX_RESULT_*.md` contains an `## Impact Trace` section. If missing, return that finding to the Fixer queue before committing.
+- **Fixture-edit check**: if any fix in the batch touches both production code *and* a test fixture, `conftest.py`, or test-setup function (autouse fixture, `setUp`, `@pytest.fixture`), require a `## Fixture Change Justification` block in the FIX_RESULT file before committing. The justification must state: (a) which behavior contract changed, and (b) whether a new test was added to pin the new behavior. If neither condition is met, return the finding to the Fixer with instructions to either revert the production change or add a dedicated test for the new behavior — do not commit a fixture patch alone.
 - If a conflict is found, resolve it before proceeding to the next batch.
 
 #### Step 3: Commit after each completed batch
@@ -387,6 +389,7 @@ When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/INTENT_BUNDLE.md)`
 3. Classic failure patterns to check explicitly:
    - **Ordering reversals**: A fix that reorders statements to satisfy a style/lint rule (e.g. imports-before-side-effects) that inadvertently undoes an order-dependent correctness fix (e.g. `load_dotenv()` must run before any import that reads env vars).
    - **Guard removal**: A defensive check added by the author was judged "unnecessary" by a reviewer and removed.
+   - **Guard addition**: A guard, validation gate, enforcement constraint, or error promotion added by a fixer that was not present in the original code and was not specified in the PR description or linked issue. Pay particular attention to fixture or test-setup changes that accompanied the production change — these are often the masking signal that a behavior contract was silently altered.
    - **Logic inversion**: A condition was refactored for clarity but its polarity was silently flipped.
    - **Dead code**: The original fix's code path is now unreachable due to a structural change made elsewhere by a fixer.
    - **Config/env neutralisation**: A value set by the original fix (env var, flag, constant) was overwritten or defaulted away by another change.
@@ -416,7 +419,8 @@ When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/INTENT_BUNDLE.md)`
 **Instructions**:
 1. Receive a single finding (ID, file, problem, suggested fix).
 2. If no decision required: apply the fix directly.
-3. If decision required: make the best-guess call. Document it:
+3. **Tightening override**: if the fix adds a guard, validation gate, enforcement constraint, error promotion (e.g. from `isError` to a JSON-RPC error code), or other behavior that was absent from the original code — treat this as **decision required** regardless of the finding's `Decision required` field. Never silently choose the tightening variant.
+4. If decision required: choose the option that best preserves the closest-preceding documented intent (PR body, linked issue, docstrings). If documented intent is absent or ambiguous, default to the loosening variant and record why. Document the decision:
    ```
    ### Decision: <finding ID> — <title>
    **Options considered**:
@@ -424,10 +428,11 @@ When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/INTENT_BUNDLE.md)`
    - Option B: <description> — <tradeoff>
    **Chose**: Option A
    **Reason**: <brief rationale>
+   **Documented intent consulted**: <source — PR body / linked issue / docstring / none>
    ```
-4. After applying, re-read the surrounding code to confirm no new issues introduced.
-5. Impact trace (required for Critical and Major findings): list (a) every caller of the changed function and whether the fix invalidates any assumption it holds, and (b) any callees added or removed and whether their side-effects are still correctly handled. Record this in `.agent-work/FIX_RESULT_<finding-id>.md` under `## Impact Trace`.
-6. Output a brief `.agent-work/FIX_RESULT_<finding-id>.md`:
+5. After applying, re-read the surrounding code to confirm no new issues introduced.
+6. Impact trace (required for Critical and Major findings): list (a) every caller of the changed function and whether the fix invalidates any assumption it holds, and (b) any callees added or removed and whether their side-effects are still correctly handled. Record this in `.agent-work/FIX_RESULT_<finding-id>.md` under `## Impact Trace`.
+7. Output a brief `.agent-work/FIX_RESULT_<finding-id>.md`:
    - Status: fixed | skipped | blocked
    - Files changed: list
    - Decision made (if any)
