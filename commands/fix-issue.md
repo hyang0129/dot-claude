@@ -608,8 +608,10 @@ If all three checks pass, push the current commits and run E2E QA:
 git push
 ```
 
+Invoke `/e2e-qa` with the PR number, forwarding `--e2e-dir` when set so both tools probe the same tree:
+
 ```
-/e2e-qa <PR_NUMBER>
+/e2e-qa <PR_NUMBER> [--e2e-dir "$E2E_DIR_OVERRIDE"]
 ```
 
 Wait for `/e2e-qa` to complete. Its Reporter posts a summary comment to the PR automatically.

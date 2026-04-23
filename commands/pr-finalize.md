@@ -96,7 +96,7 @@ Owns the overall flow. Responsible for all git operations: squash, rebase, push,
 
 Activated only when `git rebase` hits conflict markers. Resolves conflict markers in the working tree. Scope is strictly limited to lines between `<<<<<<<` and `>>>>>>>`. Does **not** fix logic bugs, test failures, style issues, or anything beyond the conflict markers themselves. Reports each conflict as resolved or unresolvable.
 
-### Senior Review Engineer (`model: "claude-opus-4-6"`)
+### Senior Review Engineer (`model: "claude-opus-4-7"`)
 
 Activated once after rebase completes (conflicts resolved or absent). Read-only — makes **no** file changes. Compares the pre-rebase diff against the post-rebase diff to verify the original fix intent is fully preserved. Reports clean or lists specific intent risks. Findings do not trigger automated fixes — they are either accepted by the Git Operator (trivial/cosmetic) or escalate to BLOCKER.
 
@@ -108,7 +108,7 @@ Activated once after rebase completes (conflicts resolved or absent). Read-only 
 Git Operator
   │
   ├─ Pre-flight checks
-  ├─ Inventory + remove artifact files
+  ├─ Inventory artifact files
   ├─ git rebase origin/<BASE>
   │     │
   │     ├─ conflicts? ──► Merge Conflict Resolver
@@ -191,11 +191,11 @@ proceed. CI will be evaluated after the force push in Step 7b.
 
 ---
 
-## Step 2 — Inventory + Remove Artifacts (Git Operator)
+## Step 2 — Inventory Artifacts (Git Operator)
 
 Artifacts from `fix-issue` and `review-fix` are written to `.agent-work/` and are
 gitignored via `.git/info/exclude` — they are never committed, so no `git rm` or
-removal commit is needed. This step just shows what is present and cleans the directory.
+removal commit is needed. This step just shows what is present.
 
 ### Present inventory to the user
 
@@ -224,12 +224,6 @@ Proceeding — no user input required.
 ```
 
 Branch will be squash-merged — individual commit history is discarded at merge time.
-
-### Remove artifact files
-
-```bash
-rm -f "$GIT_ROOT/.agent-work"/*
-```
 
 ---
 
@@ -663,7 +657,6 @@ Branch:   <BRANCH>
 Base:     <BASE>
 Squash:   <A / B / C>
 Commits:  <N before> → <N after>
-Artifacts cleaned: .agent-work/ contents cleared
 Conflicts resolved: <N, or "none">
 Intent validation: <clean / N low-risk notes>
 PR CI: all checks passing
