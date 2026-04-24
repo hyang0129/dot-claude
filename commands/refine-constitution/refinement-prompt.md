@@ -240,15 +240,23 @@ After all selected gaps are handled:
 
 ---
 
-## Step 6 — Emit updated `CONSTITUTION.md`
+## Step 6 — Emit updated `CONSTITUTION.md` and mini
 
 Write the updated `CONSTITUTION.md` to disk, following the schema in
 `commands/refine-constitution/constitution-template.md`. Do not alter sections that were
 not touched this session.
 
+Then check completeness (zero markers, thesis present, 3–10 laws each with all four
+required elements, Rejected Alternatives and Review Heuristic sections present):
+
+- **If complete:** generate `CONSTITUTION.mini.md` per the mini schema in
+  `commands/refine-constitution/constitution-template.md`.
+- **If not complete:** skip mini generation. If an existing `CONSTITUTION.mini.md`
+  is present from a prior run, delete it to prevent stale state.
+
 Then announce one of:
 
-- **Complete**: "Constitution is now complete — next run will default to amendment mode."
+- **Complete**: "Constitution is now complete — mini written to `CONSTITUTION.mini.md`. Next run will default to amendment mode."
 - **Incomplete**: List remaining gaps (same format as Step 2).
 
 If any laws were deferred or moved to `CLAUDE.md` candidates this session, list them

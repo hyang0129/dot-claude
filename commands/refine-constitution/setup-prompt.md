@@ -393,7 +393,7 @@ Not a carve-out. The instruction is load-bearing.
 
 ## Phase 9 — Emit
 
-Write three things:
+Write three things (or four — see below):
 
 ### 1. `CONSTITUTION.md`
 
@@ -404,12 +404,24 @@ Review Heuristic.
 
 Laws carry their markers per the grammar above.
 
-### 2. `CONSTITUTION.research.md`
+### 2. `CONSTITUTION.mini.md` (conditional)
+
+After writing `CONSTITUTION.md`, check whether it is complete (zero markers, all
+required sections present, 3–10 laws each with all four required elements).
+
+- **If complete:** generate `CONSTITUTION.mini.md` per the mini schema in
+  `commands/refine-constitution/constitution-template.md`. This is the agent
+  injection target — keep it under ~400 words.
+- **If not complete (markers remain):** skip mini generation. Do not write or
+  update `CONSTITUTION.mini.md`. If an existing mini file is present from a prior
+  run, delete it to prevent stale state.
+
+### 3. `CONSTITUTION.research.md`
 
 The cached research findings from Phase 1, unmodified. Refinement and amendment
 runs will read from this file.
 
-### 3. Session summary (printed to user, not written to file)
+### 4. Session summary (printed to user, not written to file)
 
 Five lines:
 

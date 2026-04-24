@@ -269,3 +269,56 @@ Alternative. The `[DRAFT]` prefix reflects the presence of element markers. The
 `[UNCHALLENGED]` suffix reflects that the challenger subagents have not yet been run.
 Refinement mode will target `[NEEDS WHY]` and `[NEEDS REJECTED-ALT]` in separate
 elicitation passes.
+
+---
+
+## Mini constitution schema
+
+`CONSTITUTION.mini.md` is a derived artifact — auto-generated from `CONSTITUTION.md`
+whenever the master is written in a complete state (zero markers). Never edit it
+directly. If the master has markers remaining after a session, skip mini generation
+(or delete an existing stale mini).
+
+**Purpose:** agent injection. The full constitution is 1,500–2,500 words; agents
+competing with code and issue context for attention window cannot reliably adhere to
+it. The mini strips everything except what an agent needs to *check* code against a
+law: the stance, the anti-pattern (concrete violation shape), and the detector (grep
+pattern, where present). The Why and Rejected Alternative live in the master for
+human authoring and edge-case reasoning; they do not belong in the injection target.
+
+### Mini schema
+
+```markdown
+# <Project Name> — Constitution (Mini)
+<!-- Auto-derived from CONSTITUTION.md — do not edit directly -->
+
+**Thesis:** <first sentence of thesis paragraph only>
+
+## Laws
+
+### Law 1 — <Stance verbatim from Law 1 heading>
+**Anti-pattern:** <Anti-pattern field verbatim>
+**Detector:** `<Detector field>` ← omit this line entirely if no Detector is defined
+
+### Law 2 — <Stance verbatim from Law 2 heading>
+**Anti-pattern:** <Anti-pattern field verbatim>
+
+... (one block per law, same structure)
+
+---
+
+If any proposed change violates a law above: redesign required — not a carve-out.
+```
+
+### Generation rules
+
+1. Copy the stance from each law heading exactly (strip `[DRAFT]` / `[UNCHALLENGED]`
+   markers if somehow present — but mini is only generated when those are absent).
+2. Copy the Anti-pattern field verbatim. Do not summarize or shorten.
+3. Copy the Detector field verbatim if present. Omit the `**Detector:**` line
+   entirely if the law has no Detector.
+4. Omit Why, Rejected Alternative, Scope, and all other fields.
+5. Omit Corollaries, Rejected Alternatives section, Review Heuristic, and
+   Demoted-to-Convention Log.
+6. Thesis: first sentence only (up to and including the first period).
+7. The closing line (`If any proposed change…`) is fixed — do not alter it.

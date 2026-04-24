@@ -297,12 +297,22 @@ silently.
 
 ## Emit
 
-Write the updated `CONSTITUTION.md`. Do not write any other file.
+Write the updated `CONSTITUTION.md`.
+
+Then check completeness (zero markers, thesis present, 3–10 laws each with all four
+required elements, Rejected Alternatives and Review Heuristic sections present):
+
+- **If still complete:** regenerate `CONSTITUTION.mini.md` per the mini schema in
+  `commands/refine-constitution/constitution-template.md`. The amendment may have
+  changed stances or anti-patterns, so always regenerate — never leave a stale mini.
+- **If regressed (markers present):** delete `CONSTITUTION.mini.md` if it exists.
+  A stale mini is worse than no mini.
 
 Announce:
 1. Which subpath ran.
 2. What changed (one sentence per change).
 3. Whether the constitution is still complete or has regressed to draft.
+4. Whether `CONSTITUTION.mini.md` was regenerated or deleted.
 
 If regressed: "Constitution has regressed to draft state. Next run of
 `/refine-constitution` will detect markers and enter refinement mode."
@@ -311,8 +321,8 @@ If regressed: "Constitution has regressed to draft state. Next run of
 
 ## Constraints
 
-- Write `CONSTITUTION.md` only. Do not edit `CLAUDE.md`, research files, or any
-  other file even when a subpath references them.
+- Write `CONSTITUTION.md` and `CONSTITUTION.mini.md` only. Do not edit `CLAUDE.md`,
+  research files, or any other file even when a subpath references them.
 - In Subpath D (Demote), suggest the `CLAUDE.md` entry but do not write it.
 - Do not stack amendments without explicit confirmation between them.
 - Do not admit a law with a weak Why regardless of how many times it is requested.

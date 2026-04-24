@@ -23,8 +23,10 @@ Optional flags (override auto-detected state when the user disagrees with the de
 - `--force-setup` — treat the file as absent and run the full first-draft flow, regardless of content.
 - `--force-refinement` — enter refinement mode even if the file appears complete.
 - `--force-amendment` — enter amendment mode even if markers are present.
+- `--base <branch>` — check out this branch before reading the constitution file. If omitted, the
+  base branch is auto-detected (see Step 1).
 
-Flags take precedence over all detection logic. When a flag is present, skip Steps 1–2 and go directly to Step 3.
+Flags take precedence over all detection logic. When a `--force-*` flag is present, skip Steps 1–2 and go directly to Step 3.
 
 ---
 
@@ -33,6 +35,7 @@ Flags take precedence over all detection logic. When a flag is present, skip Ste
 This command produces or updates:
 
 - `CONSTITUTION.md` — the constitution file, at `path` (default: repo root).
+- `CONSTITUTION.mini.md` — derived agent-injection target; written only when the master is complete (zero markers). See the mini schema in `commands/refine-constitution/constitution-template.md`.
 - `CONSTITUTION.research.md` — research cache written by the research subagent; present only when a subskill invokes it.
 
 It never writes source files, never creates branches, and never opens PRs.
@@ -63,6 +66,33 @@ Resolve the target path:
   git rev-parse --show-toplevel 2>/dev/null
   ```
   and set `CONSTITUTION_PATH=<root>/CONSTITUTION.md`.
+
+### Base branch checkout
+
+After the repo root is known, switch to the correct base branch:
+
+```bash
+# Detect base branch (skip if --base was given)
+if [ -n "<BASE_FROM_ARG>" ]; then
+  BASE_BRANCH="<BASE_FROM_ARG>"
+else
+  BASE_BRANCH="$(gh repo view --json defaultBranchRef \
+    --jq '.defaultBranchRef.name' 2>/dev/null)"
+  if [ -z "$BASE_BRANCH" ]; then
+    git show-ref --verify --quiet refs/heads/dev 2>/dev/null \
+      && BASE_BRANCH="dev" || BASE_BRANCH="main"
+  fi
+fi
+
+CURRENT_BRANCH="$(git branch --show-current)"
+if [ "$CURRENT_BRANCH" != "$BASE_BRANCH" ]; then
+  git checkout "$BASE_BRANCH"
+fi
+```
+
+Tell the user: `On branch <BASE_BRANCH>.` (one line; omit if already on that branch).
+
+Skip this step if no repo root was found (no git repo, running outside a project).
 
 Attempt to read the file at `CONSTITUTION_PATH`.
 
