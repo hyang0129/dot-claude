@@ -37,7 +37,7 @@ The refined spec is the intended input to `/resolve-issue` or `/fix-issue`.
 
 ## Args
 
-`/refine-issue <issue> [--no-post]`
+`/refine-issue <issue> [--no-post] [--base <branch>]`
 
 - `issue`: required. One of:
   - GitHub issue number (e.g. `42`)
@@ -45,6 +45,8 @@ The refined spec is the intended input to `/resolve-issue` or `/fix-issue`.
   - Quoted free-form description (e.g. `"add reading level checks to the generation pipeline"`)
 - `--no-post`: optional flag. If present and `issue` is a number or URL, keep the refined spec
   local only — do not post it to GitHub. Ignored in free-form mode (see below).
+- `--base <branch>`: optional flag. Specifies the base branch to check out before scanning the
+  codebase. If omitted, the base branch is auto-detected (see Setup).
 
 Detect whether `issue` is a number/URL/repo-ref or a free-form description:
 - If it matches `^[\w.-]+/[\w.-]+#\d+$` (e.g. `owner/repo#42`) → extract `owner/repo` and issue number.
@@ -88,6 +90,32 @@ Proceed with issue #<number> in <owner/repo>? [yes / no / different-repo]
 
 Wait for the user to confirm or correct. Then set `REPO=<owner/repo>`.
 
+### Base branch checkout
+
+After `REPO` is set, switch to the correct base branch so the codebase scan runs against clean,
+merged code rather than a feature branch:
+
+```bash
+# Detect base branch (skip if --base was given)
+if [ -n "<BASE_FROM_ARG>" ]; then
+  BASE_BRANCH="<BASE_FROM_ARG>"
+else
+  BASE_BRANCH="$(gh repo view --repo "$REPO" --json defaultBranchRef \
+    --jq '.defaultBranchRef.name' 2>/dev/null)"
+  if [ -z "$BASE_BRANCH" ]; then
+    git show-ref --verify --quiet refs/heads/dev 2>/dev/null \
+      && BASE_BRANCH="dev" || BASE_BRANCH="main"
+  fi
+fi
+
+CURRENT_BRANCH="$(git branch --show-current)"
+if [ "$CURRENT_BRANCH" != "$BASE_BRANCH" ]; then
+  git checkout "$BASE_BRANCH"
+fi
+```
+
+Tell the user: `On branch <BASE_BRANCH>.` (one line; omit if already on that branch).
+
 ### Fetch the issue (issue reference mode only)
 
 ```bash
@@ -127,6 +155,32 @@ Do not proceed until the directory exists.
 
 When `GIT_ROOT` is empty, the Spec agent writes its output to a temp path instead:
 `/tmp/REFINED_<slug>-<number>.md`. Report this path to the user in the final summary.
+
+### Constitution detection
+
+If `GIT_ROOT` is set, look for a project constitution (prefer the mini form, since it is the
+designated agent-injection target):
+
+```bash
+CONSTITUTION_PATH=""
+for candidate in "$GIT_ROOT/CONSTITUTION.mini.md" "$GIT_ROOT/CONSTITUTION.md"; do
+  if [ -f "$candidate" ]; then
+    CONSTITUTION_PATH="$candidate"
+    break
+  fi
+done
+```
+
+If `CONSTITUTION_PATH` is non-empty, **read it in full now, in this session** (not via a
+subagent) — Step 2 must be able to cite laws inline while the interview is running, and a
+subagent's findings won't be in your working context when you need them. Tell the user one
+line: `Constitution detected: <N laws> loaded from <basename>.` Keep the file in context for
+the duration of Step 2; Step 3's Spec agent will re-read it from disk.
+
+If no constitution is found, proceed without one. Skip the constitution-inference rule and the
+"Constitution fit" probe dimension in Step 2, and skip the constitution sections in the Step 3
+spec template. Do not infer laws from `CLAUDE.md` or general engineering norms — only a real
+constitution grants the authority to pre-fill answers.
 
 ---
 
@@ -214,6 +268,16 @@ attempt to summarize or restate the issue back to the user — start asking.
    - Why is this important now? What triggered the request?
    - Is there a deadline, a downstream dependency, or a user complaint that drove this?
 
+6. **Constitution fit** (only when a constitution was detected in Setup)
+   - Which law does this work touch hardest? Walk the Review Heuristic and name any
+     question that would answer "unclear" under the current scope.
+   - For any scope carve-out (e.g. "only tool X for now", "deferred to issue #N"), does the
+     carve-out leave another surface in violation of a law in the interim — and is that
+     acceptable, a follow-up with a tracked issue, or something the user hadn't considered?
+   - Is the author deliberately choosing a stance *stricter* than the constitution requires
+     (over-compliance), or stopping at the law's minimum? Either is valid, but it must be
+     explicit so downstream implementers don't quietly relax or tighten it.
+
 **Conversation rules:**
 - **Ask all relevant questions per round** — do not artificially limit to one or two. Group
   questions by dimension so the user can answer them in one pass. It is better to ask six
@@ -239,6 +303,32 @@ attempt to summarize or restate the issue back to the user — start asking.
   ```
   Only fall back to asking the user directly if the search is inconclusive. Questions about
   intent, priority, and lived experience always go to the user — code cannot answer those.
+- **When a constitution was detected in Setup, check it before asking each planned
+  question.** For each question, scan the loaded constitution for a law whose stance,
+  anti-pattern, Why clause, or rejected alternative constrains the answer. If one does,
+  present the inference inline instead of asking open-endedly:
+  ```
+  I was going to ask: <the question>
+  Per Law N (<short name>): I infer <answer> because <specific clause — anti-pattern,
+  Why failure mode, or rejected alternative — quoted or paraphrased tightly>.
+  Stop me if that's wrong — <next question>
+  ```
+  Rules on using this:
+  - **The constitution never reduces the question count.** Every probe dimension above
+    (outcome / hidden scope / acceptance / constraints / priority / constitution fit) must
+    still be covered. The constitution only pre-fills *proposed answers within* those
+    dimensions; the user must still confirm, narrow, or override.
+  - **Cite the specific clause, not the law number alone.** "Per Law 1" is not a citation;
+    "Per Law 1's anti-pattern on truncation without a machine-readable signal" is. This
+    both lets the user audit the inference and forces you to actually check rather than
+    hallucinate law coverage.
+  - **If an inference collides with what the user wants, that tension is data** — surface
+    it in the round's summary, do not swallow it. A user who wants to be stricter than a
+    law, or who is knowingly accepting a carve-out, is naming a non-obvious intent the
+    spec must carry forward.
+  - **Do not infer from `CLAUDE.md`, general engineering norms, or "obviously".** Only
+    clauses that appear in the loaded constitution grant inference authority. If the
+    constitution is silent on a question, ask the user open-endedly.
 - When the user answers, synthesize what you've learned before asking the next round.
   Show them you understood, then probe the remaining gaps.
 - If an answer opens a new dimension you hadn't considered, follow it.
@@ -372,6 +462,22 @@ perspective — describe the experience, not the implementation>
 ## Motivation Context
 <Why now, what triggered it, any urgency or downstream dependency>
 
+## Constitution Alignment
+<Only include this section if a constitution was detected. Omit entirely otherwise — do not
+leave an empty "N/A" stub.>
+
+- **Laws touched:** <list of law numbers and short names this work interacts with>
+- **Inferences carried forward:** <each inference the user confirmed during the interview,
+  tagged with its source clause — e.g. "Response must disclose incompleteness (Law 1
+  anti-pattern on truncation)">
+- **Carve-outs / tensions:** <any scope limit or behavior choice that tensions with a law,
+  plus the Review-Heuristic answer the author is accepting — e.g. "file_skeleton only;
+  callers/callees deferred to #51. Accepts that those tools remain Law-1-non-compliant in
+  the interim because staleness is a graph-wide property and fixing one tool demonstrates
+  the pattern before propagating.">
+- **Stance vs. minimum:** <for each law touched, note whether the chosen behavior meets
+  the law's minimum or exceeds it, and why>
+
 ## Clarifying Q&A Log
 <A compact log of the key exchanges — question → answer — that surfaced non-obvious intent.
 Include only rounds that changed understanding, not small clarifications.>
@@ -390,6 +496,7 @@ Pass it:
 - `GIT_ROOT` (or note that codebase context is unavailable).
 - The output path: `.agent-work/REFINED_<slug>-<number>.md`
 - `REPO` (owner/repo).
+- `CONSTITUTION_PATH` (empty string if no constitution was detected).
 - Publish mode: one of `comment` (issue-ref, default), `create` (free-form), or `none` (`--no-post`).
 - For `comment` mode: the existing issue number to comment on.
 
@@ -408,6 +515,12 @@ with the user — all intent is already captured in the intent summary.
    If not found there, glob for `**/agent_index.md` and read any match.
 4. Read the intent summary at `.agent-work/INTENT_<slug>-<number>.md` in full. This is your
    source of truth for what the user wants — treat it as authoritative.
+5. If `CONSTITUTION_PATH` is non-empty, read that file in full. The intent summary's
+   "Constitution Alignment" section tells you which laws are load-bearing for this work;
+   the constitution text itself is the authoritative source for clause wording you cite in
+   the spec (acceptance scenarios and carve-outs must reference specific clauses, not just
+   law numbers). If `CONSTITUTION_PATH` is empty, skip the constitution sections in the
+   spec template below — do not invent laws from `CLAUDE.md` or general norms.
 
 **Phase A — Codebase surface area research**
 
@@ -477,12 +590,16 @@ test that would have caught the failure if it had been written before implementa
 **Then** <observable outcome — what the user sees or measures>
 **Falsifiability:** <the test that would have caught "wired but disconnected" — e.g.
 "an integration test that calls `cli generate` and asserts the output FK grade is ≤ 6">
+**Upholds:** <only when a constitution exists: Law N (short name) — specific clause this
+scenario enforces, e.g. "Law 1 — every query answer declares its own certainty; the
+`stale: bool` annotation is the machine-readable disclosure Law 1's anti-pattern requires.">
 
 ### Entry Point: <name> (e.g. Orchestration Server `/run` endpoint)
 **Given** ...
 **When** ...
 **Then** ...
 **Falsifiability:** ...
+**Upholds:** ...
 
 [One block per relevant entry point. If an entry point is explicitly out of scope, say so
 and explain why.]
@@ -504,7 +621,23 @@ unavailable (e.g., no codebase), mark the path as `[UNVERIFIED]`.
 
 ## Out of Scope
 <Anything that might seem related but should NOT be changed in this issue. Be explicit — if
-left unspecified, implementers may either under- or over-reach.>
+left unspecified, implementers may either under- or over-reach. For any carve-out that leaves
+a surface in tension with a constitution law, say so and name the Review-Heuristic stance the
+author is accepting.>
+
+## Constitution Alignment
+<Only include this section if `CONSTITUTION_PATH` is non-empty. Omit entirely otherwise.>
+
+- **Laws touched:** <list of law numbers and short names>
+- **Inference log:** <each inference carried from the intent summary into this spec, tagged
+  with its source clause — these are the pre-filled answers the user confirmed during the
+  interview. Include them here so downstream implementers see the reasoning, not just the
+  acceptance criteria.>
+- **Carve-outs / tensions:** <any scope limit or behavior choice in this spec that tensions
+  with a law, plus the Review-Heuristic answer the author is accepting. One bullet per
+  carve-out. If there are none, write "None — every surface in scope is in compliance.">
+- **Stance vs. minimum:** <for each law touched, whether the chosen behavior meets the
+  minimum or exceeds it, and why>
 
 ## Clarifying Questions
 <Questions the implementer should answer before writing code. If none, write "None — proceed
@@ -520,6 +653,11 @@ directly to implementation.">
 - Any suspicious dead-code symbols are flagged in the surface area table or as a note.
 - The job statement, behavioral intent, and hidden assumptions are grounded in the intent summary —
   not inferred independently. If the intent summary is missing something, flag it rather than guess.
+- **When a constitution exists** (`CONSTITUTION_PATH` non-empty): every acceptance scenario
+  has an `Upholds:` line citing the specific clause it enforces (not just a law number);
+  every carve-out in Out of Scope that tensions with a law is named in Constitution
+  Alignment's `Carve-outs / tensions` bullet along with the Review-Heuristic stance; every
+  law listed in `Laws touched` appears in at least one `Upholds:` line or carve-out note.
 
 **Phase C — Publish to GitHub**
 
@@ -541,7 +679,18 @@ BODY_PATH="/tmp/gh_body_<number>.md"
 } > "$BODY_PATH"
 ```
 
-- **Publish mode `comment`** (issue-ref, default): `gh issue comment <number> --repo <REPO> --body-file "$BODY_PATH"`
+- **Publish mode `comment`** (issue-ref, default): check whether a prior spec comment already exists on the issue, then patch it in place rather than appending a new one:
+  ```bash
+  PRIOR_COMMENT_ID=$(gh issue view <number> --repo <REPO> --json comments \
+    --jq '[.comments[] | select(.body | startswith("## Refined Spec (generated by /refine-issue)")) | .databaseId] | last // empty')
+  if [ -n "$PRIOR_COMMENT_ID" ]; then
+    gh api repos/<REPO>/issues/comments/$PRIOR_COMMENT_ID \
+      --method PATCH --field body="$(cat "$BODY_PATH")"
+  else
+    gh issue comment <number> --repo <REPO> --body-file "$BODY_PATH"
+  fi
+  ```
+  This ensures re-runs update the existing spec comment in place rather than appending a duplicate, so `resolve-issue` always sees exactly one authoritative spec.
 - **Publish mode `create`** (free-form): `gh issue create --repo <REPO> --title "<title derived from the Job Statement>" --body-file "$BODY_PATH"` — capture the new issue URL from stdout.
 - **Publish mode `none`** (`--no-post`): skip publishing; the spec exists only locally.
 
