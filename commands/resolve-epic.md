@@ -174,7 +174,8 @@ Set `REFINE_HANDOFF=true` only if **all** of: `INDEX_PRESENT=true`, `INTENT_PRES
 
 - **If `REFINE_HANDOFF=true`** → **Refined-epic path**. Use `CHILD_ISSUES_ORDERED` as the
   `SUB_ISSUES` list. Spawn a **Tracking Comment Agent** (`model: "claude-sonnet-4-6"`) to
-  post a tracking comment on the epic issue (see format below), then jump to Step 2.
+  post a tracking comment on the epic issue (see format below), then spawn a **Draft PR Agent**
+  (see below), then jump to Step 2.
   - The intent document already captures decision priors, invariants, and feared failure modes
     — no ADR or planning step is needed.
   - Integration seams, risk register, and QA checklist already exist in `index.md`. The Step 4
@@ -224,8 +225,9 @@ Set `REFINE_HANDOFF=true` only if **all** of: `INDEX_PRESENT=true`, `INTENT_PRES
     After the Collection Parser Agent returns:
     - **If `CHILD_COUNT=0`** → stop and report to the user: the epic body has no open-issue
       task-list entries, so there is nothing to resolve. Do not proceed.
-    - **Else** → spawn a **Tracking Comment Agent** to post the tracking comment, then jump
-      to Step 2 using `CHILD_ISSUES_ORDERED` as `SUB_ISSUES`.
+    - **Else** → spawn a **Tracking Comment Agent** to post the tracking comment, then spawn
+      a **Draft PR Agent** (see below), then jump to Step 2 using `CHILD_ISSUES_ORDERED` as
+      `SUB_ISSUES`.
 
   - **If the user chose "Real epic (needs refinement)"** → stop and tell the user to run
     `/refine-epic <number>` first, then re-run `/resolve-epic`.
@@ -268,6 +270,60 @@ and title (fetch titles via `gh issue view <N> --repo <REPO> --json title`).
    SUB_ISSUES=<num1>,<num2>,...
    END_HANDOFF
    ```
+
+### Draft PR Agent instructions
+
+Role: open a draft PR from the epic branch for immediate visibility. No source file changes.
+
+Spawn immediately after the Tracking Comment Agent, before Step 2.
+
+1. Check whether a draft PR already exists for this epic branch (resume case):
+   ```bash
+   gh pr list --repo <REPO> --head "$EPIC_BRANCH" --json number,url,isDraft \
+     --jq '.[] | {number,url,isDraft}'
+   ```
+   If a PR already exists (draft or open), skip creation and go to step 3 with the existing
+   number and URL.
+
+2. Create the draft PR:
+   ```bash
+   gh pr create --repo <REPO> \
+     --base "$DEV_BASE" \
+     --head "$EPIC_BRANCH" \
+     --draft \
+     --title "epic(#<number>): <title>" \
+     --body "$(cat <<'EOF'
+   Closes #<number>
+   Closes #<sub_num1>
+   Closes #<sub_num2>
+   [one Closes line per sub-issue]
+
+   > **Work in progress** — sub-issues are being resolved autonomously.
+   > This PR will be updated with full documentation when all sub-issues are complete.
+
+   ## Sub-Issues
+
+   | # | Issue | Title | Status |
+   |---|-------|-------|--------|
+   | 1 | #<num1> | <title> | pending |
+   | 2 | #<num2> | <title> | pending |
+   | ... | | | |
+
+   Epic branch: `<EPIC_BRANCH>`
+   EOF
+   )"
+   ```
+
+3. Return:
+   ```
+   HANDOFF
+   DRAFT_PR_NUMBER=<integer>
+   DRAFT_PR_URL=<full GitHub PR URL>
+   END_HANDOFF
+   ```
+
+The orchestrator reads the handoff and stores `DRAFT_PR_NUMBER` and `DRAFT_PR_URL` for use
+in Step 4.
 
 ---
 
@@ -711,12 +767,10 @@ Role: read-only research + PR body creation. No source file modifications.
    - Refined-epic path: `$EPIC_DIR/intent.md` and `$EPIC_DIR/index.md` (decision priors, integration seams, risk register, QA checklist).
    - Collection-of-issues path: no planning artifacts exist — derive summary from the epic body and each child issue directly.
 4. Collect all sub-issue numbers from the tracking comment on the epic issue. You will need them to emit `Closes` keywords for each one.
-5. Produce the PR body.
+5. Produce the PR body and update the existing draft PR (opened in Step 1.5) with full documentation, then mark it ready for review:
 
 ```bash
-gh pr create --repo <REPO> \
-  --base "$DEV_BASE" \
-  --head "$EPIC_BRANCH" \
+gh pr edit <DRAFT_PR_NUMBER> --repo <REPO> \
   --title "epic(#<number>): <title>" \
   --body "$(cat <<'EOF'
 Closes #<number>
@@ -773,6 +827,8 @@ Closes #<sub_num2>
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
 )"
+
+gh pr ready <DRAFT_PR_NUMBER> --repo <REPO>
 ```
 
 ### Mermaid Agent
@@ -791,7 +847,7 @@ Resume is handled automatically by Step 2a (Resume Check). When `/resolve-epic` 
    ```
    If the branch exists, skip Step 1's branch creation (Setup Agent still runs to establish `GIT_ROOT`, `DEV_BASE`, and `EPIC_BRANCH`).
 
-2. Step 1.5 still runs — the Refine Detection Agent probes for artifacts, and if a tracking comment already exists on the epic, the branching logic picks the same path as before (refined or collection). No duplicate tracking comment is posted if one already exists.
+2. Step 1.5 still runs — the Refine Detection Agent probes for artifacts, and if a tracking comment already exists on the epic, the branching logic picks the same path as before (refined or collection). No duplicate tracking comment is posted if one already exists. The Draft PR Agent also checks for an existing PR before creating one — `DRAFT_PR_NUMBER` and `DRAFT_PR_URL` are recovered from the existing open PR.
 
 3. Step 2a (Resume Check) handles the rest: detecting completed sub-issues, closing any stale open PRs, and finding the first pending sub-issue.
 

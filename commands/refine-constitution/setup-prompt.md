@@ -1,5 +1,33 @@
 # Setup Subskill — First-Draft Constitution Interview
 
+## Step −1 — Model check (before anything else)
+
+Check the model you are currently running on. You know this from your system context
+(`You are powered by the model named ...`).
+
+- If the model is **Opus** (any version): proceed normally.
+- If the model is **not Opus**: stop and warn the user before proceeding:
+
+  > **Warning: this skill is running on [model name], not Opus.**
+  >
+  > The setup process is a multi-hour, judgment-heavy interview. It requires strong
+  > bluffing detection, sustained coherence across phases, and the ability to hold
+  > multiple competing framings simultaneously. Smaller models reliably produce
+  > posthoc rationalization dressed as Whys, miss load-bearing test failures, and
+  > admit weak laws.
+  >
+  > **Recommended:** switch to Opus before continuing (`/model` in Claude Code, or
+  > select Opus in the model picker). Running setup on a non-Opus model will likely
+  > produce a constitution that looks complete but is not load-bearing.
+  >
+  > Type `proceed anyway` to continue on [model name], or switch models and re-run
+  > `/refine-constitution`.
+
+  Wait for the user's response. If they type `proceed anyway`, continue with a note
+  in `CONSTITUTION.wip.md` recording which model was used. Otherwise stop.
+
+---
+
 This subskill runs when no constitution exists. It produces the first draft of
 `CONSTITUTION.md` by interviewing the author. The interview is irreducible: a
 fully-automated pass produces posthoc mechanical-description Whys every time. You
@@ -12,6 +40,31 @@ and the bluffing-detection section. You will apply them repeatedly below.
 Expect one working session. Do not try to short-circuit phases. Do not let the
 user short-circuit phases either — if they ask you to "just write it," refuse and
 explain why (the guide's "Why the interview is irreducible" covers this).
+
+---
+
+## Resume logic (when STATE=WIP)
+
+If the entry point passed `STATE=WIP`, a prior session was interrupted. Read
+`CONSTITUTION.wip.md` and determine `Phase completed: N`.
+
+- **Phase 0** → thesis is saved; skip Phase 0. Load the thesis paragraph and
+  collected hints. Resume at Phase 1.
+- **Phase 1** → research is cached in `CONSTITUTION.research.md`; skip Phases 0–1.
+  Load the thesis, hints, and research. Resume at Phase 2.
+- **Phase 2** → debates list (pre-filter) is saved; skip Phases 0–2. Resume at Phase 3.
+- **Phase 3** → filtered debates are saved; skip Phases 0–3. Resume at Phase 4.
+- **Phase 4** → post-challenger debates are saved; skip Phases 0–4. Resume at Phase 5.
+- **Phase 5 (law N of M)** → `CONSTITUTION.md` contains the laws drafted so far; read
+  them and resume law drafting from law N+1. The WIP file lists remaining debates.
+- **Phase 6** → Corollaries section is in `CONSTITUTION.md`; skip Phases 0–6. Resume at Phase 7.
+- **Phase 7** → Laws are in precedence order in `CONSTITUTION.md`; skip to Phase 8.
+- **Phase 8** → Review Heuristic is in `CONSTITUTION.md`; skip to Phase 9.
+
+When resuming, tell the user: "Resuming from Phase N. Here is what was captured so
+far: [brief summary of thesis + N debates]. We continue from [next phase]."
+
+Do not re-ask questions from completed phases.
 
 ---
 
@@ -78,6 +131,24 @@ The user has produced a paragraph that (a) names the product, (b) names the
 delivery surface, (c) would survive replacement of the delivery surface without
 becoming a different project. Read the paragraph back to the user, confirm, and
 move to Phase 1.
+
+### WIP checkpoint
+
+Before moving to Phase 1, write `CONSTITUTION.wip.md` at the repo root:
+
+```markdown
+# Constitution WIP — Setup in Progress
+
+## Phase completed: 0
+
+## Thesis
+<confirmed thesis paragraph verbatim>
+
+## Design hints collected
+<bullet list of design choices hinted at, competitor names, emphasized words>
+```
+
+Tell the user: "Thesis saved to `CONSTITUTION.wip.md` — progress is now recoverable."
 
 ---
 
@@ -153,6 +224,16 @@ cut. Fewer than 3 is a red flag: push harder with research-briefed follow-ups, o
 go back to Phase 0 and check that the thesis is sharp enough to have forced
 tradeoffs.
 
+### WIP checkpoint
+
+Update `CONSTITUTION.wip.md`: set `Phase completed: 2` and append:
+
+```markdown
+## Settled debates (pre-filter)
+Debate 1: <stance> — rejected: <alternative> — because: <draft why>
+Debate 2: ...
+```
+
 ---
 
 ## Phase 3 — Opposite-stance test
@@ -188,6 +269,12 @@ You have a filtered debate list where each entry has a defensible opposite stanc
 Ideally 4–8 entries; if you have more than 10, do not worry yet — Phase 5's cap
 enforcement will cut further.
 
+### WIP checkpoint
+
+Update `CONSTITUTION.wip.md`: set `Phase completed: 3`, replace the debates section
+with the filtered list (mark dropped debates as `[→ CLAUDE.md]`), and note which
+opposite-stance project passed the load-bearing test for each surviving debate.
+
 ---
 
 ## Phase 4 — Challenger pass
@@ -220,6 +307,21 @@ A rebuttal that concedes a point revises the debate list:
 Debate list is final. Each surviving debate has: chosen stance, rejected alternative
 (possibly sharpened), draft Why, scope annotation (if any), and challenger
 rebuttal captured.
+
+### WIP checkpoint
+
+Update `CONSTITUTION.wip.md`: set `Phase completed: 4` and append:
+
+```markdown
+## Post-challenger debate list (final inputs to law drafting)
+Debate 1: <stance> — rejected: <sharpened alt> — draft why: <...> — rebuttal: <...>
+Debate 2: ...
+
+## CLAUDE.md candidates so far
+- <debate> — reason: <why demoted>
+```
+
+This file is the recovery point if Phase 5 is interrupted before any laws are written to disk.
 
 ---
 
@@ -325,6 +427,20 @@ Do not admit law 11. The cap is load-bearing — every invariant you admit is a
 commitment to enforce absolutely, and 11+ means enforcement becomes selective in
 practice.
 
+### Per-law WIP save
+
+After completing each law (admitted or deferred), **immediately write the current
+state of all drafted laws to `CONSTITUTION.md`**. Use the schema from
+`commands/refine-constitution/constitution-template.md` but leave sections not yet
+reached (Rejected Alternatives, Corollaries, Review Heuristic) as `[MISSING]`
+placeholders. This means `CONSTITUTION.md` is a valid-but-incomplete draft after
+every law, and the refinement subskill can resume from it if the session ends.
+
+Also update `CONSTITUTION.wip.md`: set `Phase completed: 5 (law N of M)`.
+
+Do not wait until all laws are drafted to write `CONSTITUTION.md` for the first
+time. Write it after law 1. Overwrite it after each subsequent law.
+
 ### Exit condition
 
 Every surviving debate has been walked. Each produced either an admitted law (with
@@ -352,6 +468,10 @@ Corollaries section is acceptable.
 
 ---
 
+After writing corollaries, update `CONSTITUTION.md` on disk with the Corollaries section filled in, and set `Phase completed: 6` in `CONSTITUTION.wip.md`.
+
+---
+
 ## Phase 7 — Precedence ordering
 
 Order the admitted laws from most to least fundamental. Ask the user:
@@ -368,6 +488,10 @@ statement of what matters more; it must be intentional.
 
 Deferred laws do not participate in the ordering but keep their drafted numbers
 so future refinement runs can resume cleanly.
+
+---
+
+After reordering laws, update `CONSTITUTION.md` on disk with the new law order, and set `Phase completed: 7` in `CONSTITUTION.wip.md`.
 
 ---
 
@@ -391,18 +515,22 @@ Not a carve-out. The instruction is load-bearing.
 
 ---
 
+After writing the Review Heuristic, update `CONSTITUTION.md` on disk with the section filled in, and set `Phase completed: 8` in `CONSTITUTION.wip.md`.
+
+---
+
 ## Phase 9 — Emit
 
 Write three things (or four — see below):
 
 ### 1. `CONSTITUTION.md`
 
-Follow the schema in `commands/refine-constitution/constitution-template.md`.
-Required sections, in order: Thesis, Laws (ordered by precedence, numbered,
-deferred laws included in their marker form), Rejected Alternatives, Corollaries,
-Review Heuristic.
+By this point `CONSTITUTION.md` has been written and updated at every phase checkpoint
+since Phase 5. Phase 9 writes the final version — all sections complete, laws in
+precedence order, markers present where required. Follow the schema in
+`commands/refine-constitution/constitution-template.md`.
 
-Laws carry their markers per the grammar above.
+After writing, delete `CONSTITUTION.wip.md` — the session is no longer interrupted.
 
 ### 2. `CONSTITUTION.mini.md` (conditional)
 

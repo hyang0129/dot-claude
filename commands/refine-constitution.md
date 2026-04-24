@@ -94,6 +94,17 @@ Tell the user: `On branch <BASE_BRANCH>.` (one line; omit if already on that bra
 
 Skip this step if no repo root was found (no git repo, running outside a project).
 
+### WIP detection
+
+Before reading `CONSTITUTION_PATH`, check for `CONSTITUTION.wip.md` in the same directory.
+
+If found:
+- Read it and extract the `Phase completed:` line.
+- Tell the user: "Found an in-progress setup session (last checkpoint: Phase N). Resume it, or discard it and start fresh? (resume/discard)"
+- If **resume**: set `STATE=WIP` and proceed to Step 4 (`setup` mode). The setup subskill reads `CONSTITUTION.wip.md` at its start and picks up from the last completed phase. Skip Steps 2–3.
+- If **discard**: delete `CONSTITUTION.wip.md` and continue normally with the steps below.
+- If `CONSTITUTION.md` also exists with content alongside `CONSTITUTION.wip.md`: treat the WIP file as a recovery file for pre-Phase-5 state only, and do not override the existing `CONSTITUTION.md` unless the user confirms.
+
 Attempt to read the file at `CONSTITUTION_PATH`.
 
 - If the file does not exist, or exists but is empty (zero bytes or whitespace only): set `STATE=ABSENT`.
