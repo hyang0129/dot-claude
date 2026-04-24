@@ -50,7 +50,10 @@ Input detection:
 - Matches `^https?://github\.com/` → extract `owner/repo` and issue number from URL.
 - Otherwise → free-form description.
 
-Optional flag: `--org` activates org mode (multi-team coordination protocol).
+Optional flags:
+- `--org` activates org mode (multi-team coordination protocol).
+- `--base <branch>` specifies the base branch to check out before scanning the codebase.
+  If omitted, the base branch is auto-detected (see Step 0).
 
 ---
 
@@ -145,6 +148,34 @@ Do not proceed until the directory exists.
 
 If `GIT_ROOT` is empty, all output goes to `/tmp/EPIC_<slug>-<number>/`. Mark all surface area
 as `[UNVERIFIED — no codebase]`. Report this path to the user in the final summary.
+
+### Base branch checkout
+
+After `REPO` and `GIT_ROOT` are both set, switch to the correct base branch so the codebase
+scan runs against clean, merged code:
+
+```bash
+# Detect base branch (skip if --base was given)
+if [ -n "<BASE_FROM_ARG>" ]; then
+  BASE_BRANCH="<BASE_FROM_ARG>"
+else
+  BASE_BRANCH="$(gh repo view --repo "$REPO" --json defaultBranchRef \
+    --jq '.defaultBranchRef.name' 2>/dev/null)"
+  if [ -z "$BASE_BRANCH" ]; then
+    git show-ref --verify --quiet refs/heads/dev 2>/dev/null \
+      && BASE_BRANCH="dev" || BASE_BRANCH="main"
+  fi
+fi
+
+CURRENT_BRANCH="$(git branch --show-current)"
+if [ "$CURRENT_BRANCH" != "$BASE_BRANCH" ]; then
+  git checkout "$BASE_BRANCH"
+fi
+```
+
+Tell the user: `On branch <BASE_BRANCH>.` (one line; omit if already on that branch).
+
+Skip this step if `GIT_ROOT` is empty (no local repo to check out).
 
 ### Output directory
 
