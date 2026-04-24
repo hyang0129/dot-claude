@@ -1,5 +1,5 @@
 ---
-version: 1.0.0
+version: 1.1.0
 ---
 
 # PR Review Cycle
@@ -253,23 +253,56 @@ When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/REVIEW_BUNDLE.md)`
 
 **Instructions**:
 1. Understand the intent from the PR title and description (in the bundle metadata). Also extract **documented intent signals**: docstrings containing phrases like "by design", "intentionally", "permissive", "do not enforce", "not an error", or equivalent; explicit design statements in the PR body; and any linked issue if the PR body includes a `Closes #N` / `Fixes #N` reference. Collect these signals before reading the diff.
-2. For each problem found, write a structured finding:
+
+2. **Tier every finding.** Before writing a finding, classify it into exactly one tier. The tier controls downstream handling:
+
+   - **Tier `fix`** — Orchestrator will auto-apply via a Fixer. Only assign `fix` when **all three** hold:
+     - *Unique resolution*: there is exactly one correct answer. Not "change the code" vs. "change the spec."
+     - *Local blast radius*: the change lives inside a single function or narrow seam; no public API, persisted data shape, or cross-cutting pattern changes.
+     - *No design commitment*: applying the fix doesn't commit the project to a pattern, abstraction, structure, or convention that reasonable engineers could disagree about.
+
+   - **Tier `propose`** — Surfaced as a review comment with a proposed diff; not applied. Use when the finding is a genuine improvement but the resolution involves a judgment call: pattern divergence, refactoring suggestions, naming, clarity, minor structural reshuffles, performance tradeoffs, tests for non-critical paths.
+
+   - **Tier `escalate`** — Surfaced as a proposed follow-up issue; no Fixer runs. Use when **any** of these hold:
+     - Resolution would require **new modules, new abstractions, new public types, or new schemas**.
+     - Resolution would require **new test surface** (writing tests for newly-introduced behavior, not just fixing a broken existing test).
+     - The diff needed would exceed roughly **20% of the PR's own diff size**.
+     - Resolution would **change the PR's acceptance criteria** (narrowing or expanding what the PR commits to).
+     - The finding is **off-topic** — unrelated to the PR's stated purpose (former "scope creep" bucket).
+     - Resolution requires **author context** the bundle doesn't provide (unknown downstream consumers, unstated invariants, unclear data flow).
+     - The finding is a **spec-vs-implementation mismatch** — the code doesn't match the PR body's acceptance criteria. Resolution direction (change code vs. update spec) is always an author decision.
+
+   **Language sniff test** — if the finding's `Problem` field leans on *"missed"*, *"should be"*, *"consider"*, *"appears to"*, *"seems like"*, *"probably meant"*, *"could be clearer"*, *"doesn't match"*, it is not tier `fix`. Tier `fix` reads like *"will crash"*, *"will fail"*, *"will return wrong value"*, *"is vulnerable to"*, *"asserts the wrong value"*, *"patches an unused symbol"*.
+
+   **When in doubt, downgrade** (`fix` → `propose`, `propose` → `escalate`). The Orchestrator will never upgrade a tier; humans can.
+
+3. For each problem found, write a structured finding:
    ```
-   ### [SEVERITY: critical|major|minor] <short title>
+   ### [Tier: fix|propose|escalate] [Severity: critical|major|minor] <short title>
    **ID**: F-<number>
    **File**: path/to/file.ts:line
    **Problem**: What is wrong and why it matters
-   **Suggested fix**: Concrete recommendation
+   **Tier rationale**: Which tier rule placed this here (e.g. "unique resolution + local" → fix; "schema shape change" → escalate)
+   **Suggested fix / proposed diff / issue draft**: (see per-tier requirements below)
    **Decision required**: [yes/no] If yes, describe the tradeoff
-   **Parallelizable**: [yes/no] Can this be fixed independently of other findings?
+   **Parallelizable**: [yes/no] Can this be fixed independently of other findings? (only meaningful for tier `fix`)
    **Conflicts with**: [list of finding IDs that touch the same lines/functions, or "none"]
    ```
-   Before writing any finding: if the flagged behavior is covered by a documented intent signal (step 1), set **Decision required**: yes and state *which signal* it conflicts with. Do not treat undocumented-ness as evidence of a bug — only flag absence of documentation as a finding if documentation is explicitly required by the repo's conventions.
-3. Categories to check: bugs, logic errors, security issues, missing error handling, missing tests, naming/style, scope creep, breaking changes.
-4. Scope check: flag anything unrelated to the PR's stated purpose — note it, do not fix it.
-5. Pattern consistency: for any new code that parallels an existing function, endpoint, or migration, identify the closest analogue and confirm the new code replicates its correctness properties — guards, operation ordering, conditional field population, idempotency. Unexplained divergence from an established pattern is a Major finding.
-6. Test coverage validity: for new or modified tests, confirm (a) any patched/stubbed symbols are actually imported by the module under test, and (b) behavioral invariants ("X must NOT happen") have explicit negative assertions. A patch on an unused symbol or a missing negative assertion for an invariant is a Major finding.
-7. Output `.agent-work/REVIEW_FINDINGS.md` with all findings organized by severity.
+
+   Per-tier content requirements for the middle field:
+   - `fix`: concrete one- or two-line recommendation describing the exact change.
+   - `propose`: a fenced ```diff``` block with the proposed change, plus a one-line rationale.
+   - `escalate`: a short issue draft with sub-fields `Problem`, `Constraints this PR already commits to`, `Open design questions`.
+
+   Before writing any finding: if the flagged behavior is covered by a documented intent signal (step 1), set **Decision required**: yes, tier must be `propose` or `escalate` (never `fix`), and state *which signal* it conflicts with. Do not treat undocumented-ness as evidence of a bug — only flag absence of documentation as a finding if documentation is explicitly required by the repo's conventions.
+
+4. Categories to check: bugs, logic errors, security issues, missing error handling, missing tests, naming/style, off-topic scope, breaking changes.
+
+5. Pattern consistency: for any new code that parallels an existing function, endpoint, or migration, identify the closest analogue and confirm the new code replicates its correctness properties — guards, operation ordering, conditional field population, idempotency. Unexplained divergence from an established pattern is a finding. Tier it `propose` by default; only tier it `fix` if the divergence will cause a concrete runtime bug (not just stylistic inconsistency).
+
+6. Test coverage validity: for new or modified tests, confirm (a) any patched/stubbed symbols are actually imported by the module under test, and (b) behavioral invariants ("X must NOT happen") have explicit negative assertions. A patch on an unused symbol is a tier `fix` finding (unique resolution — remove or correct the patch). A missing negative assertion for an invariant is tier `propose` if the assertion is a small addition, tier `escalate` if it would require building new test scaffolding.
+
+7. Output `.agent-work/REVIEW_FINDINGS.md` with all findings organized **first by tier** (`fix` → `propose` → `escalate`), then by severity within each tier.
 
 ### Agent 2 — Orchestrator (inherits session model — should be Opus)
 
@@ -279,7 +312,9 @@ When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/REVIEW_BUNDLE.md)`
 
 #### Step 1: Partition findings into fix groups
 
-Read `.agent-work/REVIEW_FINDINGS.md`. Build a dependency graph:
+Read `.agent-work/REVIEW_FINDINGS.md`. **Only tier `fix` findings are eligible for Fixer execution.** Tier `propose` findings are surfaced as review comments with proposed diffs but never applied. Tier `escalate` findings are surfaced as follow-up issue drafts and never applied.
+
+For the tier `fix` findings only, build a dependency graph:
 - Findings are **independent** if they touch different files, or touch the same file but non-overlapping, non-interdependent sections, AND neither finding's fix could invalidate the other.
 - Findings are **dependent** if: they touch the same function/class, one fix changes the signature/interface that another fix relies on, or the logical correctness of one fix depends on the state after another.
 
@@ -298,15 +333,47 @@ Produce a `.agent-work/FIX_PLAN.md`:
 ### Serial Batch 3
 - F-5: <title> — reason: architectural decision, needs F-2 result first
 
-### Skipped (out of scope)
-- F-3: <title> — out of PR scope
+### Proposed (not applied — surfaced as review comments)
+- F-3: <title> — tier propose, pattern divergence
+- F-6: <title> — tier propose, clarity refactor
+
+### Escalated (not applied — surfaced as follow-up issue drafts)
+- F-8: <title> — tier escalate, spec mismatch (change-code vs. update-spec decision)
+- F-9: <title> — tier escalate, would introduce new module
 ```
 
 Rules for grouping:
-- **Default to serial** unless there are 5 or more actionable findings in this cycle. Below that threshold the overhead of coordination outweighs the benefit.
+- **Default to serial** unless there are 5 or more actionable tier `fix` findings in this cycle. Below that threshold the overhead of coordination outweighs the benefit.
 - When parallelizing: only findings that are provably independent (different files, non-overlapping sections, no shared interfaces) go into the same parallel batch. When in doubt, keep serial.
-- If a finding requires a human decision, it always runs as its own serial step so the decision is documented before execution, regardless of total finding count.
+- If a tier `fix` finding requires a human decision, promote it to tier `propose` — do not run it as a Fixer step. A finding that needs a decision is definitionally not tier `fix`.
 - Critical findings always run before minor ones within the same dependency chain.
+
+#### Step 1a: Surface tier `propose` and tier `escalate` findings
+
+Before running any Fixer, post the non-`fix` findings to the PR as a single review comment so the author sees them alongside the auto-applied changes:
+
+```bash
+{
+  echo "<!-- review-fix-proposals -->"
+  echo "## Proposed changes (not auto-applied) and escalations"
+  echo
+  echo "These findings were identified by the Reviewer but fall outside the auto-fix scope. The fix loop will not apply them. Please review and decide."
+  echo
+  echo "### Proposed changes — diffs for your consideration"
+  # For each tier `propose` finding in REVIEW_FINDINGS.md, emit its title,
+  # file, rationale, and the proposed diff block.
+  echo
+  echo "### Escalated — candidates for follow-up issues"
+  # For each tier `escalate` finding, emit its title, why-escalated reason,
+  # and the issue draft (Problem / Constraints / Open design questions).
+  echo
+  echo "<!-- review-fix-proposals-end -->"
+} > .agent-work/REVIEW_PROPOSALS.md
+
+gh pr comment <pr-number> --body "$(cat .agent-work/REVIEW_PROPOSALS.md)"
+```
+
+Post this comment once per cycle only if that cycle produced new tier `propose` or `escalate` findings not already in an earlier cycle's proposals comment. De-dupe by finding title + file.
 
 #### Step 2: Execute batches
 
@@ -393,6 +460,7 @@ When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/INTENT_BUNDLE.md)`
    - **Logic inversion**: A condition was refactored for clarity but its polarity was silently flipped.
    - **Dead code**: The original fix's code path is now unreachable due to a structural change made elsewhere by a fixer.
    - **Config/env neutralisation**: A value set by the original fix (env var, flag, constant) was overwritten or defaulted away by another change.
+   - **Tier overreach**: A change committed under tier `fix` that, by its footprint, should have been tier `propose` or `escalate` — e.g. it introduced a new module, expanded a public data shape, added new test surface for newly-introduced behavior, or exceeded ~20% of the pre-loop PR's own diff size. Flag as high risk: the Reviewer/Fixer smuggled design work through the auto-apply path without author sign-off.
 
 4. For each concern found, write a structured finding:
    ```
@@ -414,13 +482,19 @@ When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/INTENT_BUNDLE.md)`
 
 ### Agent 3+ — Fixer (`model: "claude-sonnet-4-6"`, one instance per finding)
 
-**Role**: Apply exactly one finding's fix. Do NOT review. Do NOT fix other things noticed along the way.
+**Role**: Apply exactly one tier `fix` finding. Do NOT review. Do NOT fix other things noticed along the way.
 
 **Instructions**:
-1. Receive a single finding (ID, file, problem, suggested fix).
-2. If no decision required: apply the fix directly.
-3. **Tightening override**: if the fix adds a guard, validation gate, enforcement constraint, error promotion (e.g. from `isError` to a JSON-RPC error code), or other behavior that was absent from the original code — treat this as **decision required** regardless of the finding's `Decision required` field. Never silently choose the tightening variant.
-4. If decision required: choose the option that best preserves the closest-preceding documented intent (PR body, linked issue, docstrings). If documented intent is absent or ambiguous, default to the loosening variant and record why. Document the decision:
+1. Receive a single finding (ID, tier, file, problem, suggested fix).
+2. **Tier gate**: if the finding's tier is anything other than `fix`, stop immediately. Write `Status: refused — tier <X>, not auto-fixable` to `.agent-work/FIX_RESULT_<finding-id>.md` and exit without modifying any file. The Orchestrator is responsible for routing non-`fix` findings to the proposals comment; you never apply them.
+3. **Scope gate**: before editing, ask yourself *"would applying this fix introduce a new module, a new public type, a new schema field, or more than ~20% of the PR's own diff size in additional lines?"* If yes, stop and write `Status: refused — scope too large, should have been tier escalate`. Do not apply.
+4. **Tightening override**: if the fix would add any of the following, treat it as **decision required** regardless of the finding's `Decision required` field and refuse to silently apply it — write `Status: refused — requires decision, should have been tier propose` and exit:
+   - A guard, validation gate, enforcement constraint, or error promotion (e.g. from `isError` to a JSON-RPC error code) that was absent from the original code.
+   - **Shape expansion** of a public data structure: adding fields to a returned dict/object, converting a flat mapping to a nested one, widening an API payload, changing an artifact's on-disk schema.
+   - A new abstraction layer (class, protocol, interface, base class, decorator) introduced to satisfy the fix.
+   - A change to a persisted format (config key, file layout, database schema, migration).
+5. If no decision required and none of the refusal gates trip: apply the fix directly.
+6. If decision required (and the finding legitimately belongs in tier `fix` — a narrow case, e.g. two equivalent spellings of the same bug-fix): choose the option that best preserves the closest-preceding documented intent (PR body, linked issue, docstrings). If documented intent is absent or ambiguous, default to the loosening variant and record why. Document the decision:
    ```
    ### Decision: <finding ID> — <title>
    **Options considered**:
@@ -430,13 +504,13 @@ When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/INTENT_BUNDLE.md)`
    **Reason**: <brief rationale>
    **Documented intent consulted**: <source — PR body / linked issue / docstring / none>
    ```
-5. After applying, re-read the surrounding code to confirm no new issues introduced.
-6. Impact trace (required for Critical and Major findings): list (a) every caller of the changed function and whether the fix invalidates any assumption it holds, and (b) any callees added or removed and whether their side-effects are still correctly handled. Record this in `.agent-work/FIX_RESULT_<finding-id>.md` under `## Impact Trace`.
-7. Output a brief `.agent-work/FIX_RESULT_<finding-id>.md`:
-   - Status: fixed | skipped | blocked
+7. After applying, re-read the surrounding code to confirm no new issues introduced.
+8. Impact trace (required for Critical and Major findings): list (a) every caller of the changed function and whether the fix invalidates any assumption it holds, and (b) any callees added or removed and whether their side-effects are still correctly handled. Record this in `.agent-work/FIX_RESULT_<finding-id>.md` under `## Impact Trace`.
+9. Output a brief `.agent-work/FIX_RESULT_<finding-id>.md`:
+   - Status: fixed | skipped | blocked | refused
    - Files changed: list
    - Decision made (if any)
-   - Impact Trace (step 5)
+   - Impact Trace (step 8)
    - Notes
 
 ---
@@ -457,9 +531,9 @@ If `NEEDS_INITIAL_REVIEW = true`, run the Reviewer agent now (before any fix cyc
 gh pr review <pr-number> --comment --body "$(cat .agent-work/REVIEW_FINDINGS_0.md)"
 ```
 
-- Save findings to `.agent-work/REVIEW_FINDINGS_0.md` (cycle 0).
+- Save findings to `.agent-work/REVIEW_FINDINGS_0.md` (cycle 0), organized by tier (`fix` → `propose` → `escalate`).
 - This is read-only — do NOT fix anything yet.
-- The initial review documents the pre-fix state so reviewers can see what was found before any automated changes.
+- The review comment must make the tier clear at the top: something like "X fix-tier findings will be auto-applied in subsequent cycles; Y proposals and Z escalations are surfaced for author decision and will NOT be auto-applied."
 - Then proceed to the fix loop starting at `CURRENT_CYCLE = 1`. The cycle-1 Reviewer still runs as normal (it may find fewer issues after the initial review is posted, which is fine).
 
 If `NEEDS_INITIAL_REVIEW = false`, skip this step and start the loop directly.
@@ -475,7 +549,9 @@ CURRENT_CYCLE = 1
 │                                                                     │
 │   Reviewer (cycle N) → .agent-work/REVIEW_FINDINGS_<N>.md                      │
 │        ↓                                                            │
-│   If no findings with severity critical or major → exit loop early  │
+│   Orchestrator posts tier `propose` + `escalate` findings as PR comment │
+│        ↓                                                            │
+│   If no tier `fix` findings of severity critical or major → exit loop early │
 │        ↓                                                            │
 │   Orchestrator reads findings, builds .agent-work/FIX_PLAN_<N>.md              │
 │        ↓                                                            │
@@ -505,7 +581,7 @@ Intent Validation (always runs, no fixes):
    Human Review Summary presented
 ```
 
-**Early exit**: If the Reviewer finds zero critical or major findings at the start of any cycle, skip that cycle's fix phase and jump straight to the Final Review. Note in the summary that the loop exited early at cycle N.
+**Early exit**: If the Reviewer finds zero critical or major **tier `fix`** findings at the start of any cycle, skip that cycle's fix phase and jump straight to the Final Review. Tier `propose` and `escalate` findings never trigger fix cycles — they are surfaced as PR comments and carried into the summary regardless of count. Note in the summary that the loop exited early at cycle N.
 
 **Post-rebase validation**: If the branch was rebased since the last review cycle, run the full test suite and diff the pre/post-rebase state of changed files before the Reviewer starts. Any test regression or missing logic is treated as a Critical finding and assigned to a Fixer before other findings in that cycle.
 
@@ -649,7 +725,15 @@ Reviewer model: <$REVIEWER_MODEL><append " (default)" if REVIEWER_MODEL == claud
   - Chose: A — <reason>
   - [CONFIRM / OVERRIDE?]
 
-### Skipped / Out of Scope (<count>)
+### Proposed Changes (not auto-applied) — <count>
+- F-1-3: <title> — <why tier propose>; see PR comment for diff
+- F-2-2: <title> — <why tier propose>
+
+### Escalated (follow-up issue drafts) — <count>
+- F-1-8: <title> — <why tier escalate>; see PR comment for issue draft
+- F-2-4: <title> — <why tier escalate>
+
+### Skipped / Off-topic (<count>)
 - F-1-3: <title> — <reason>
 
 ### Test Results
@@ -692,22 +776,32 @@ gh pr comment <pr-number> --body "$(cat <<'EOF'
 **Reviewer model**: <$REVIEWER_MODEL><append " (default)" if REVIEWER_MODEL == claude-opus-4-7>
 
 ### Final review state
-- Critical findings remaining: <count>
-- Major findings remaining: <count>
-- Minor findings remaining: <count>
-- Overall: <CLEAN — no critical/major remaining | FINDINGS REMAIN — see below>
+- Critical tier `fix` findings remaining: <count>
+- Major tier `fix` findings remaining: <count>
+- Minor tier `fix` findings remaining: <count>
+- Tier `propose` findings surfaced: <count> (see proposals comment)
+- Tier `escalate` findings surfaced: <count> (see proposals comment)
+- Overall: <CLEAN — no critical/major tier `fix` remaining | FIX-TIER FINDINGS REMAIN — see below>
 
-### All findings addressed (<total fixed count>)
+### Tier `fix` findings applied (<total fixed count>)
 | ID | Severity | Title | Status |
 |---|---|---|---|
 | F-1-1 | critical | <title> | fixed (cycle 1) |
 | F-1-4 | major | <title> | fixed (cycle 1) |
 | F-2-1 | minor | <title> | fixed (cycle 2) |
-| F-1-3 | minor | <title> | skipped — out of scope |
+| F-1-3 | minor | <title> | refused — tier mismatch |
 
-### Outstanding findings (not fixed)
-<List any critical/major/minor findings still present in .agent-work/REVIEW_FINDINGS_FINAL.md.
-If none: "None — all actionable findings resolved.">
+### Tier `propose` findings (not auto-applied — author decides)
+<For each tier `propose` finding across all cycles, list ID, severity, title, and a link/reference
+to the proposed-changes PR comment. If none: "None.">
+
+### Tier `escalate` findings (candidates for follow-up issues)
+<For each tier `escalate` finding across all cycles, list ID, title, and the one-line
+"why escalated" reason. If none: "None.">
+
+### Outstanding tier `fix` findings (not applied)
+<List any critical/major/minor tier `fix` findings still present in .agent-work/REVIEW_FINDINGS_FINAL.md.
+If none: "None — all tier `fix` findings resolved.">
 
 ### Decisions made during fixes
 <For each decision recorded in .agent-work/FIX_RESULT_*.md — list the finding ID, the options
@@ -737,6 +831,7 @@ Rules:
 - Follow `~/.claude/guides/pr-guide.md` for all PR interactions.
 - Never squash unrelated changes into fixes.
 - Prefer minimal, targeted fixes — do not refactor surrounding code unless it is the direct cause of a finding.
+- **Respect the three-tier split**: only tier `fix` findings are auto-applied. Tier `propose` findings are surfaced as PR comments with proposed diffs; tier `escalate` findings are surfaced as issue drafts. Never upgrade a tier (`propose` → `fix`) to work around the auto-apply gate; downgrade freely when in doubt.
 - Never merge. Never force-push.
 - If `gh` is unavailable, stop and tell the user to install the GitHub CLI.
 - If the working tree has uncommitted changes before starting, stop and warn the user — do not mix pre-existing changes with review fixes.
