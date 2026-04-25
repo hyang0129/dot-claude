@@ -15,6 +15,7 @@ Reference files:
 - Bluffing detection, load-bearing test, anatomy of a law: `guides/constitution-guide.md`
 - Research subagent: `commands/refine-constitution/research-prompt.md`
 - Challenger subagents: `commands/refine-constitution/challenger-prompts.md`
+- Corollary subagents (Pair Judge + Advocate): `commands/refine-constitution/corollary-prompts.md`
 
 ---
 
@@ -101,7 +102,25 @@ A new debate has surfaced. Run a scoped version of the setup flow for this one d
    because it was requested. A weak law occupies one of the 10 slots and gives future
    agents the impression of a justified constraint when none exists.
 
-8. **Regression rule.** If the new law is admitted with any marker (`[DRAFT]`,
+8. **Walk new law-pairs for corollaries.** If the new law was admitted complete
+   (no markers), it creates `count(existing_admitted_laws)` new pairs — Law N-new
+   paired with every existing admitted law. Re-run Phase 6a/6b/6c from
+   `commands/refine-constitution/setup-prompt.md` against just those new pairs:
+
+   - Phase 6a: enumerate new pairs only (existing pairs were walked at setup time
+     and their corollary state is unchanged by this amendment).
+   - Phase 6b: spawn one Pair Judge per new pair, in parallel.
+   - Phase 6c: spawn one Advocate per CANDIDATE survivor, in parallel.
+   - Phase 6d: walk surviving candidates with the user, applying the four-condition
+     admission gate per the Corollaries section of
+     `commands/refine-constitution/constitution-template.md`.
+
+   Skip this step if the new law was admitted with markers — corollary derivation
+   is brittle when the source law's stance is incomplete. The next refinement
+   pass that completes the law should trigger this walk; until then, no corollaries
+   referencing the new law are written.
+
+9. **Regression rule.** If the new law is admitted with any marker (`[DRAFT]`,
    `[NEEDS WHY]`, `[NEEDS REJECTED-ALT]`, `[NEEDS ANTI-PATTERN]`, `[UNCHALLENGED]`,
    or `[DEFERRED — …]`), the constitution as a whole regresses to draft state. The
    next run of `/refine-constitution` will detect markers and route to refinement.
@@ -127,7 +146,14 @@ An incident or postmortem has revealed a better failure mode for an existing law
 4. If the new Why is stronger — more concrete, names a world-level failure, survives
    the bluffing probe — replace the existing Why. Law remains complete. No markers.
 
-5. If the new Why is not stronger than the existing one, keep the existing Why.
+5. **Re-check corollaries citing this law.** A sharpened Why can shift which side
+   of a tension the law lands on. For each corollary that lists this law in its
+   `Derived from` field, ask the user: does the new Why change the call? If yes,
+   either revise the corollary in place (keeping the four-condition gate) or drop
+   it. If the user is unsure, re-run Phase 6c (Advocate) for that corollary to
+   re-test whether a coherent anti-corollary still exists under the new Why.
+
+6. If the new Why is not stronger than the existing one, keep the existing Why.
    Tell the user: "The existing Why is more concrete than the proposed replacement.
    Amendment did not land. The law is unchanged."
 
@@ -156,9 +182,12 @@ longer operates in the space where the law applies.
    - **`<Stance>`** — retired <YYYY-MM-DD>. Reason: <one sentence from the user>.
    ```
 
-5. Update any corollaries that reference law numbers to match the new numbering.
-   Corollaries derived from the retired law are removed entirely; their authority
-   derived from a law that no longer exists.
+5. Update corollaries:
+   - Drop every corollary whose `Derived from` field cites the retired law. Their
+     authority derived from a law that no longer exists; what remains under just
+     the surviving cited law is by definition a single-law restatement.
+   - Renumber remaining corollaries (`N+M.K`) so the law-pair indices match the
+     new law numbering. The K-th-of-pair index does not change.
 
 6. Update the Review Heuristic to reflect the renumbered laws.
 
@@ -195,8 +224,11 @@ A law was a convention in disguise — useful, but not load-bearing. It belongs 
 
    Do NOT edit `CLAUDE.md`. This subskill does not touch other files.
 
-5. Update any corollaries that reference law numbers to match the new numbering.
-   Corollaries derived from the demoted law are removed entirely.
+5. Update corollaries:
+   - Drop every corollary whose `Derived from` field cites the demoted law.
+     Their authority derived from a law that is no longer in the constitution.
+   - Renumber remaining corollaries (`N+M.K`) so the law-pair indices match the
+     new law numbering.
 
 6. Update the Review Heuristic to reflect the renumbered laws.
 
@@ -234,8 +266,11 @@ Two laws need to swap priority — one currently wins in conflict when the other
 3. Renumber all laws to reflect the new precedence order, from most to least
    fundamental.
 
-4. Update any corollaries that reference law numbers (e.g. "Corollary 1.2 — derived
-   from Law 1").
+4. Update any corollaries that reference law numbers — both the heading
+   (`**Corollary N+M.K**`) and the `Derived from` field. The K-th-of-pair index
+   does not change. Reorder the Corollaries section so corollaries are grouped
+   by their lowest-numbered source law in the new ordering, which keeps the
+   section readable at a glance.
 
 5. Update the Review Heuristic question order to match the new law numbering.
 
@@ -276,10 +311,23 @@ load-bearing rationale was thesis-dependent.
    - If the law no longer passes the load-bearing test at all: propose demoting or
      retiring it before closing.
 
-6. **Announce the regression:**
+6. **Invalidate all existing corollaries.** A thesis change can shift which side
+   of a tension wins for a given decision class — even when the laws themselves
+   survive unchanged. Drop every existing corollary from the Corollaries section
+   and record the count in the announcement. Do not attempt to preserve them
+   selectively — the load-bearing reasoning was the old thesis, and "still
+   coherent" under the new thesis is not the same as "still derived from it."
 
-   > "Thesis amended. N laws flagged for re-review: [list laws]. Constitution has
-   > regressed to draft state. Next run will enter refinement mode."
+   The corollary re-walk happens at the next setup or refinement pass that
+   re-runs Phase 6 against the surviving complete laws. Do not re-run Phase 6
+   inside this amendment — the constitution has regressed to draft state and
+   corollary derivation against incomplete laws is brittle.
+
+7. **Announce the regression:**
+
+   > "Thesis amended. N laws flagged for re-review: [list laws]. K corollaries
+   > dropped (re-walked at next Phase 6). Constitution has regressed to draft
+   > state. Next run will enter refinement mode."
 
 ---
 

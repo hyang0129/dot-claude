@@ -59,12 +59,42 @@ single law.
 
 ### Corollaries (optional)
 
-Consequences of the laws worth stating explicitly because they catch common mistakes,
-but which require no independent justification. Labeled as derived. Format:
+Non-obvious decisions that emerge when **two or more laws acting together** force a
+call neither law makes alone. A corollary is a mini constitutional ruling: given
+these principles, in this class of situation, here is the call we make and what we
+give up to make it. If a single law is sufficient to motivate the statement, it is
+not a corollary — it belongs in that law's anti-pattern or rejected-alternative
+section. An empty Corollaries section is acceptable and often correct.
+
+Format:
 
 ```
-**Corollary N.M** — <statement>  ← derived from Law N
+**Corollary N+M.K** — <one-sentence statement of the call>
+
+- **Derived from:** Law N + Law M (+ Law … if applicable; minimum 2)
+- **Tension:** <one sentence — what these laws each pull toward in this concrete decision class>
+- **Stance:** <which law wins this decision and the concrete behavior that follows>
+- **Anti-corollary:** <the coherent opposite call, framed positively, naming what it would gain (which failure mode it avoids) and what it would cost (which failure mode it accepts)>
 ```
+
+Numbering: `N+M.K` makes the multi-law derivation visible at a glance — e.g.
+`Corollary 1+4.1` is the first corollary derived from the Law 1 / Law 4 pair. If
+three laws are involved use `N+M+P.K`.
+
+**Admission gate.** A corollary may be written to this section only if all four
+conditions hold:
+
+1. **Multi-law derivation:** ≥2 distinct laws cited in `Derived from`.
+2. **Concrete decision class:** `Tension` names a specific situation (schema
+   migration vs. rebuild, sync vs. async, eager vs. lazy, fail-loud vs. degrade,
+   etc.) — not "in general" or "in principle".
+3. **Stance is contested:** the `Anti-corollary` is a coherent opposite call
+   argued on the constitution's own terms, not a strawman ("the opposite is:
+   ignore Law N" is not an anti-corollary, it is a law violation).
+4. **Net-new content:** not equivalent to anything already in either source law's
+   anti-pattern or rejected-alternative section.
+
+Failing the gate means the candidate is dropped, not patched.
 
 ### Review Heuristic (optional but high-value)
 

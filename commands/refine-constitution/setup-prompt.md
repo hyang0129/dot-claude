@@ -449,26 +449,128 @@ and 10. `CLAUDE.md candidates` list is up to date with demotions.
 
 ---
 
-## Phase 6 — Corollaries
+## Phase 6 — Corollaries (pair-walk with adversarial gate)
 
-After all laws are drafted, ask:
+A corollary is a non-obvious decision that emerges when **two or more laws acting
+together** force a call neither law makes alone. The previous "what must be true
+for these laws to hold" framing reliably produces single-law restatements dressed
+as derived consequences ("Law 1 says don't mislead → corollary: error messages
+must include certainty level" is just Law 1 applied to a surface). The new flow is
+fail-closed: if no concrete contested decision exists, no corollary is written.
+An empty Corollaries section beats a section full of paraphrases.
 
+Phase 6 is a four-stage flow. The schema for each accepted corollary is defined
+in `commands/refine-constitution/constitution-template.md` (Corollaries section,
+including the four-condition admission gate).
+
+### Phase 6a — Enumerate law pairs (script, no LLM)
+
+Build the deterministic list of all `N choose 2` pairs of admitted laws (deferred
+laws do not participate). For 5 laws → 10 pairs; for the 10-law cap → 45 pairs.
+A `Bash` one-liner or a small Python snippet is sufficient — no model required.
+
+```bash
+python3 - <<'PY'
+import itertools
+laws = [1, 2, 3, 4, 5]  # admitted law numbers
+for a, b in itertools.combinations(laws, 2):
+    print(f"({a},{b})")
+PY
 ```
-What must be true for these laws to hold, even if it doesn't follow from any single
-law? What consequences emerge when the laws interact that are worth stating
-explicitly so someone doesn't reinvent them?
-```
 
-Write corollaries as derived statements, labeled clearly. They **do not count
-toward the 10-law cap.** Their authority derives from the laws they follow from,
-not from being independently load-bearing.
+If the pair count exceeds **20**, ask the user before fanning out: "There are
+[N] pairs. Run the full matrix (parallel, bounded), or restrict to user-nominated
+pairs?" Default to full matrix. Most constitutions land at 4–6 laws (6–15 pairs)
+and this branch rarely fires.
 
-Do not fish for corollaries. If the user produces none, write none. An empty
-Corollaries section is acceptable.
+### Phase 6b — Spawn Pair Judge subagents in parallel
+
+For each pair from 6a, spawn one Pair Judge subagent **in parallel from a single
+ROOT turn** — multiple Agent tool calls in one message. Parallel spawning is
+load-bearing here: each Judge sees only its own pair, which prevents the cross-
+pair anchoring bias a single agent walking all pairs would suffer ("pair 7 is
+like pair 3, both DISCARD"). It also keeps the round-trip count to one regardless
+of pair count.
+
+Follow `commands/refine-constitution/corollary-prompts.md § Pair Judge` as the
+subagent brief. Each Judge receives:
+
+- The thesis.
+- Exactly two laws in full (Law N and Law M, both stance and body).
+- The cached research findings from `CONSTITUTION.research.md`.
+
+Each Judge returns one of:
+
+- **CANDIDATE** — fills in `Derived from / Tension / Stance`. The pair has a
+  concrete contested decision class.
+- **DISCARDED** — one-line reason (e.g. "no decision class found", "fully
+  covered by Law N's anti-pattern", "redundant with rejected-alternatives").
+
+ROOT collects all verdicts. Discarded pairs stop here; CANDIDATE pairs proceed
+to 6c. Most pairs return DISCARDED — that is the correct default. A constitution
+where every pair has a tension is almost certainly one where the laws are not
+orthogonal enough.
+
+### Phase 6c — Spawn Anti-corollary Advocates in parallel
+
+For each CANDIDATE from 6b, spawn one Advocate subagent **in parallel from a
+single ROOT turn** (same parallel-spawn rule as 6b — prevents Advocates from
+anchoring on each other and bounds the round-trips to one).
+
+Follow `commands/refine-constitution/corollary-prompts.md § Advocate` as the
+subagent brief. Each Advocate receives:
+
+- The thesis.
+- The two laws in full.
+- The Judge's `Tension` and `Stance` for that candidate.
+- The cached research findings.
+
+Each Advocate returns one of:
+
+- **CONTESTED** — a coherent anti-corollary written positively (what the opposite
+  call would gain, what cost it accepts), argued on the constitution's own terms.
+  The candidate survives the gate.
+- **NOT CONTESTED** — explicit statement that no coherent opposite exists on the
+  constitution's terms. The candidate fails the gate and is dropped. It was a
+  single-law restatement masquerading as a corollary.
+
+The Advocate is the structural forcing function: a candidate without a coherent
+anti-corollary cannot satisfy the admission gate.
+
+### Phase 6d — ROOT walks survivors with the user
+
+For each surviving candidate, present all four fields to the user
+(`Derived from`, `Tension`, `Stance`, `Anti-corollary`). Per candidate, the user
+picks one of:
+
+- **Accept** — write to `CONSTITUTION.md`.
+- **Revise** — edit any field. Stance and Anti-corollary edits must keep the
+  gate (still multi-law, still contested with a non-strawman opposite). If a
+  revision breaks the gate, drop the candidate.
+- **Reject** — drop. Record the reason in `CONSTITUTION.wip.md` for audit trail.
+
+Before writing each accepted corollary, apply the four-condition admission gate
+from the template as a final check (multi-law derivation, concrete decision
+class, contested stance, net-new content). Any candidate failing the gate is
+dropped, not patched.
+
+If the user wants to add a corollary the matrix did not surface, run it through
+the same gate manually (state both source laws, the tension, the stance, and
+write the anti-corollary positively). Same gate, same drop-don't-patch rule.
+
+Per-candidate save: after each accepted corollary, **immediately update the
+Corollaries section in `CONSTITUTION.md` on disk**. Mirrors the per-law-save
+pattern in Phase 5 — if the session is interrupted mid-Phase-6, accepted
+corollaries persist, and 6a/6b/6c are cheap to re-run.
+
+Corollaries do not count toward the 10-law cap. Their authority derives from
+the laws they sit between, not from being independently load-bearing.
 
 ---
 
-After writing corollaries, update `CONSTITUTION.md` on disk with the Corollaries section filled in, and set `Phase completed: 6` in `CONSTITUTION.wip.md`.
+After Phase 6d completes (or completes with zero surviving corollaries), update
+`CONSTITUTION.md` on disk with the Corollaries section filled in (or empty), and
+set `Phase completed: 6` in `CONSTITUTION.wip.md`.
 
 ---
 

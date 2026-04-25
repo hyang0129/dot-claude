@@ -170,13 +170,24 @@ confidence-scored edges, lazy rebuild, filesystem watchers, pickle caches. It
 prevents thrash from well-meaning contributors who propose something the author
 already considered.
 
-### Corollaries (derived, not independent)
+### Corollaries (derived, multi-law, contested)
 
-Consequences of the laws that are worth stating explicitly because they catch common
-mistakes, but which don't require separate justification. They follow logically from
-the laws. Labeling them corollaries keeps the law count honest and signals that
-their authority derives from the law they follow from, not from being independently
-load-bearing.
+A corollary is a non-obvious decision that emerges when **two or more laws acting
+together** force a call neither law makes alone. Structurally it is a mini
+constitutional ruling: given these principles, in this concrete class of
+situation, here is the call we make and what we give up to make it.
+
+Test: a valid corollary has a coherent **anti-corollary** — an opposite call a
+constitution-respecting author could pick by privileging the other law in the
+tension, naming what they would gain and what they would cost. If no coherent
+anti-corollary exists, the candidate is a single-law restatement, not a
+corollary, and belongs in that law's anti-pattern or rejected-alternative
+section instead.
+
+A corollary's authority derives from the laws it sits between, not from being
+independently load-bearing — so corollaries do not count toward the 10-law cap.
+But the multi-law-plus-contested gate is enforced strictly: an empty Corollaries
+section is acceptable and often correct.
 
 ### Review heuristic (optional but high-value)
 
@@ -221,6 +232,19 @@ A law with a Why but no statement of what was considered and rejected. The Why t
 reads as justifying the chosen approach in a vacuum, not as resolving a tradeoff.
 This makes it hard for a future agent to judge whether a novel proposal violates the
 spirit of the law or just its letter.
+
+### Single-law corollaries
+
+A "corollary" that derives from one law is a paraphrase, not a derived consequence.
+Symptoms: the `Derived from` line cites one law; the anti-corollary is a strawman
+("the opposite is: don't do Law N"); removing the corollary loses no information
+because Law N already covered the case. Cure: delete it, or move its substance
+into the source law's anti-pattern section if the original law was missing a
+concrete violation example.
+
+The structural test: a valid corollary cannot be stated without referencing both
+source laws. If you can write the candidate using only Law N's vocabulary, the
+candidate is Law N being correctly applied — file it there.
 
 ### Scope creep above the cap
 
@@ -323,13 +347,29 @@ and rejected, plus all responsibilities the author has decided to push to caller
 downstream systems. Write them as one sentence each: what + why it was rejected or
 delegated.
 
-### Step 6 — Derive corollaries last
+### Step 6 — Derive corollaries last (pair-walk with adversarial gate)
 
-After the laws are written, ask: "What must be true for these laws to hold, even
-if it doesn't follow from any single law?"
+After the laws are written, walk every pair of laws and ask, for each pair: is
+there a concrete decision class — schema migration vs. rebuild, sync vs. async,
+fail-loud vs. degrade, etc. — where these two laws pull in different directions?
+For each pair where the answer is yes, draft the four-field corollary (`Derived
+from`, `Tension`, `Stance`, `Anti-corollary`).
 
-Corollaries emerge naturally when laws interact. Write them after the laws, label
-them as derived, and do not let them dilute the law count.
+The anti-corollary is the structural forcing function. It is to corollaries what
+the rejected alternative is to laws: the element that proves the author actually
+weighed something rather than wrote down what they already wanted to do. A
+corollary without a coherent opposing position is not a decision — it's a
+description.
+
+Drop any candidate that fails the gate. The "what must be true for these laws to
+hold" framing reliably produces single-law restatements; replace it with the
+explicit pair-walk and the anti-corollary requirement. An empty Corollaries
+section is the honest output for a constitution whose laws don't pull against
+each other in practice.
+
+The setup skill automates this with parallel Pair Judge and Advocate subagents
+(see `commands/refine-constitution/corollary-prompts.md`). For manual or
+amendment-time corollary work, walk the same gate by hand.
 
 ### Step 7 — Order by precedence and write the review heuristic
 
