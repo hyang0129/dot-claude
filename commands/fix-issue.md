@@ -6,14 +6,13 @@ version: 1.0.0
 
 ## Setup
 
-Parse arguments — format is: `/fix-issue <issue> [tier] [--worktree] [--base <branch>] [--e2e-dir <path>]`
+Parse arguments — format is: `/fix-issue <issue> [tier] [--worktree] [--base <branch>]`
 - `issue`: required. GitHub issue number (e.g. `42`) or full URL.
 - `tier`: optional override: `1`, `2`, or `3`. If omitted, tier is auto-detected.
 - `--worktree`: optional flag. If present, create a `git worktree` for the feature branch instead of checking it out in the main repo. The worktree is created as a sibling directory (`../repo-name-issue-<number>/`). Useful when multiple issues are being worked in parallel or when the main repo must stay on its current branch.
 - `--base <branch>`: optional. Override the base branch instead of auto-detecting `dev`/`develop`/`main`. Used by `/resolve-epic` to target an epic branch. When set, the PR also targets this branch.
-- `--e2e-dir <path>`: optional. Directory to search for Playwright infrastructure in Step 5b. Use when E2E tests live outside the repo (e.g. a dev container mount). Defaults to `$WORK_DIR` if omitted.
 
-Strip `--worktree`, `--base <branch>`, and `--e2e-dir <path>` from the argument list before parsing `issue` and `tier`. Set `WORKTREE_MODE=true` if `--worktree` was present, otherwise `WORKTREE_MODE=false`. Set `BASE_OVERRIDE` to the branch name if `--base` was present, otherwise leave unset. Set `E2E_DIR_OVERRIDE` to the path if `--e2e-dir` was present, otherwise leave unset.
+Strip `--worktree` and `--base <branch>` from the argument list before parsing `issue` and `tier`. Set `WORKTREE_MODE=true` if `--worktree` was present, otherwise `WORKTREE_MODE=false`. Set `BASE_OVERRIDE` to the branch name if `--base` was present, otherwise leave unset.
 
 Examples:
 - `/fix-issue 42` → fetch issue #42, auto-detect tier, normal checkout
@@ -22,7 +21,6 @@ Examples:
 - `/fix-issue 42 2 --worktree` → force Tier 2, use a git worktree
 - `/fix-issue https://github.com/org/repo/issues/42` → full URL form
 - `/fix-issue 42 --base epic/601-rendering-pipeline` → branch off and PR into the epic branch
-- `/fix-issue 42 --e2e-dir D:/containers/claude-rts` → run E2E detection against the container mount
 
 Read the agent team guide before doing anything else:
 ```
@@ -579,56 +577,7 @@ If any check fails: identify the failing file(s), re-assign to the responsible a
 
 ---
 
-## Step 5b — E2E QA (Playwright repos only)
-
-After Step 4 validation passes, run E2E QA if the repo has Playwright tests.
-
-First, resolve the E2E directory:
-
-- If `--e2e-dir` was passed → `E2E_DIR="$E2E_DIR_OVERRIDE"`.
-- Otherwise → `E2E_DIR="$WORK_DIR"`.
-
-Detect whether `E2E_DIR` has any test files using Playwright (JS or Python):
-
-```bash
-grep -rl "playwright" "$E2E_DIR" \
-  --include="*.spec.ts" --include="*.spec.js" \
-  --include="*.e2e.ts" --include="*.e2e.js" \
-  --include="*.test.ts" --include="*.test.js" \
-  --include="*.py" \
-  --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=__pycache__ \
-  2>/dev/null | head -1
-```
-
-**Skip the rest of this step** if this returns no matches — the repo has no Playwright tests.
-
-If all three checks pass, push the current commits and run E2E QA:
-
-```bash
-git push
-```
-
-Invoke `/e2e-qa` with the PR number, forwarding `--e2e-dir` when set so both tools probe the same tree:
-
-```
-/e2e-qa <PR_NUMBER> [--e2e-dir "$E2E_DIR_OVERRIDE"]
-```
-
-Wait for `/e2e-qa` to complete. Its Reporter posts a summary comment to the PR automatically.
-
-**Gate on verdict:**
-- `VERDICT=PASS` → proceed to Step 6.
-- `VERDICT=FAIL` → stop and report to the user:
-  ```
-  E2E QA failed for PR #<PR_NUMBER>. Fix the failing tests or app bugs reported by /e2e-qa,
-  then re-run Step 5b before proceeding.
-  PR: <PR_URL>
-  ```
-  Do not push or update the PR body until `/e2e-qa` returns `PASS`.
-
----
-
-## Step 6 — Push (PR stays in draft)
+## Step 5 — Push (PR stays in draft)
 
 All implementation changes were committed incrementally after each step. Verify no uncommitted changes remain:
 ```bash
@@ -651,7 +600,6 @@ Verify PR checklist before pushing:
 - [ ] All binary checks pass
 - [ ] All acceptance criteria from the plan are met
 - [ ] Only files in-scope for this issue were modified (`git diff <BASE>...HEAD --name-only`)
-- [ ] E2E QA passed (`/e2e-qa` verdict PASS), or repo has no Playwright infrastructure
 
 Push commits and update the draft PR body. **The PR stays in draft** — review and the ready-flip happen separately via `/pr-review-cycle`.
 
@@ -684,7 +632,7 @@ EOF
 
 ---
 
-## Step 6b — PR Documentation Agent
+## Step 5b — PR Documentation Agent
 
 After the PR is open, spawn a **Documentation Agent** (`model: "claude-sonnet-4-6"`) to update the PR body with a detailed human-readable report. This runs before `/pr-review-cycle` so reviewers have full context when they open the PR.
 
@@ -861,7 +809,7 @@ PR: <url>
 - [ ] <any unmet — with note>
 
 ### Next step
-PR is in draft. Run `/pr-review-cycle <PR_NUMBER>` to review, then mark ready when satisfied.
+PR is in draft. If invoked via `/resolve-issue`, the orchestrator handles secondary branches (component tests, integration tests, E2E QA) and review automatically. If invoked standalone, run `/pr-review-cycle <PR_NUMBER>` to review, then mark ready when satisfied.
 ```
 
 ---
