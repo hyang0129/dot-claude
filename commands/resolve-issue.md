@@ -16,9 +16,9 @@ The redesign is centred on **blast radius** — the long-term value of each phas
 
 ## Args
 
-`/resolve-issue <issue> [tier] [--worktree] [--base <branch>] [--return-only] [--no-component-tests] [--no-integration-tests] [--no-e2e] [--no-impact-probe] [--require-artifact-tests] [--skip-suite-check] [--impl-fix-loops <n>] [--no-impl-fix]`
+`/resolve-issue <issue> [--tier <N>] [--worktree] [--base <branch>] [--return-only] [--no-component-tests] [--no-integration-tests] [--no-e2e] [--no-impact-probe] [--require-artifact-tests] [--skip-suite-check] [--impl-fix-loops <n>] [--no-impl-fix]`
 
-Forwarded verbatim to `/fix-issue`: `issue`, `tier`, `--worktree`, `--base`.
+Forwarded to `/fix-issue` after Step 0: `issue`, `--tier <TIER>` (always, derived from Step 0 assessment or user override), `[--require-adr]` (when `ADR_REQUIRED=true`), `--worktree`, `--base`. If the user supplies `--tier <N>`, Step 0 skips `/assess-complexity` and uses that value directly.
 
 Resolve-issue-only flags (strip before forwarding to `/fix-issue`):
 
@@ -44,9 +44,54 @@ Default. Run all phases, present a Final Summary, and report results to the user
 
 ---
 
+## Step 0 — Complexity Assessment
+
+If `--tier <N>` was supplied by the user, skip `/assess-complexity`: set `TIER=<N>`, `TIER_RATIONALE="user-supplied override"`, `ADR_REQUIRED=false`, `OPEN_QUESTIONS=""`. Proceed to Step 1.
+
+Otherwise, spawn a small Agent subagent (`model: "claude-sonnet-4-6"`, read-only tools) to detect the repo, fetch the issue, and run `/assess-complexity`.
+
+Subagent instructions:
+
+> 1. **Repo detection**: use `git remote -v` and `gh repo view --json nameWithOwner` to detect `owner/repo`. If the issue arg is a full URL, extract `owner/repo` directly. Do not prompt for confirmation — detection only.
+> 2. Fetch the issue:
+>    ```bash
+>    gh issue view <number> --repo <owner/repo> --json number,title,body,labels,comments
+>    ```
+> 3. Run `/assess-complexity` with the full issue body (number + title + body + comments).
+> 4. Return as the last thing in your output:
+>    ```
+>    HANDOFF
+>    TIER=<1|2|3>
+>    TIER_RATIONALE=<one sentence>
+>    ADR_REQUIRED=<true|false>
+>    ADR_REASON=<TIER_3 | TIER_2_OPEN_QUESTIONS | SHARED_INTERFACE_SUSPECTED | empty>
+>    OPEN_QUESTIONS=<semicolon-separated, or empty>
+>    END_HANDOFF
+>    ```
+
+Wait for the subagent. Parse the HANDOFF. Store `TIER`, `TIER_RATIONALE`, `ADR_REQUIRED`, `ADR_REASON`, `OPEN_QUESTIONS`.
+
+Log to the user:
+
+```
+## Step 0 — Complexity Assessment
+
+Tier:          <TIER> — <TIER_RATIONALE>
+ADR required:  <ADR_REQUIRED><if ADR_REASON non-empty: " (<ADR_REASON>)">
+Open questions: <OPEN_QUESTIONS or "none">
+```
+
+---
+
 ## Step 1 — fix-issue phase
 
-Spawn an Agent subagent (`model: "claude-sonnet-4-6"`) to run the fix-issue skill with the provided arguments (resolve-issue-only flags stripped).
+Spawn an Agent subagent (`model: "claude-sonnet-4-6"`) to run the fix-issue skill. Pass the following arguments (resolve-issue-only flags stripped, tier and ADR flags derived from Step 0):
+
+```
+/fix-issue <issue> --tier <TIER> [--require-adr] [--worktree] [--base <branch>]
+```
+
+(`--require-adr` is appended only when `ADR_REQUIRED=true` from Step 0.)
 
 Append to the subagent prompt:
 
@@ -63,6 +108,7 @@ Append to the subagent prompt:
 > REPO=<owner/repo>
 > ISSUE_NUMBER=<integer>
 > BASE=<base branch name>
+> ADR_PATH=<absolute path to .agent-work/ISSUE_<ISSUE_NUMBER>_ADR.md if Step 2b produced one, else empty>
 > SUCCESS=<true|false>
 > FAILURE_REASON=<empty if SUCCESS=true, otherwise a one-line description>
 > END_HANDOFF
@@ -168,22 +214,22 @@ If `SHARED_INTERFACE_HIT=false`, skip this step.
 
 If `SHARED_INTERFACE_HIT=true` AND `ADR_PATH` is empty: stop.
 
-Report to the user:
+This is an internal consistency error — Step 0 should have set `ADR_REQUIRED=true` (reason: `SHARED_INTERFACE_SUSPECTED`) and `/fix-issue` should have produced an ADR via `--require-adr`. Report to the user:
 
 ```
-Step 2-pre — ADR required
+Step 2-pre — ADR consistency error
 
 The diff transitively reaches a shared interface ([<SHARED_INTERFACE_MODULES>]),
-but no ADR exists at .agent-work/ISSUE_<ISSUE_NUMBER>_ADR.md.
+but no ADR was produced at .agent-work/ISSUE_<ISSUE_NUMBER>_ADR.md.
 
-A shared-interface change without a recorded design decision is the modal cause of
-cross-cutting incidents. Resolve one of:
+Step 0 should have detected SHARED_INTERFACE_SUSPECTED and forwarded --require-adr
+to /fix-issue. This indicates a gap in the Step 0 assessment or a failed ADR step.
 
-  1. Re-run /fix-issue with the ADR step forced (recommended).
+Resolve one of:
+  1. Re-run /resolve-issue — Step 0 will re-assess and forward --require-adr.
   2. Manually author .agent-work/ISSUE_<ISSUE_NUMBER>_ADR.md (one paragraph
      stating "no design changes; here's why this is safe" is acceptable for
-     trivial changes).
-  3. Re-run /resolve-issue if the ADR is already drafted on disk.
+     trivial changes), then re-run /resolve-issue.
 
 PR: <PR_URL>
 ```

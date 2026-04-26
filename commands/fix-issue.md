@@ -6,21 +6,24 @@ version: 1.0.0
 
 ## Setup
 
-Parse arguments — format is: `/fix-issue <issue> [tier] [--worktree] [--base <branch>]`
+Parse arguments — format is: `/fix-issue <issue> [--tier <N>] [--require-adr] [--worktree] [--base <branch>]`
 - `issue`: required. GitHub issue number (e.g. `42`) or full URL.
-- `tier`: optional override: `1`, `2`, or `3`. If omitted, tier is auto-detected.
+- `--tier <N>`: optional override: `1`, `2`, or `3`. If omitted, tier is auto-detected via `/assess-complexity`. Also accepted as the second positional argument for backwards-compat (`/fix-issue 42 2`). When passed by `/resolve-issue`, the assessment has already been done — skip it.
+- `--require-adr`: optional flag. When present, forces Step 2b (ADR drafting) regardless of tier or open questions. Passed by `/resolve-issue` when its Step 0 assessment set `ADR_REQUIRED=true`.
 - `--worktree`: optional flag. If present, create a `git worktree` for the feature branch instead of checking it out in the main repo. The worktree is created as a sibling directory (`../repo-name-issue-<number>/`). Useful when multiple issues are being worked in parallel or when the main repo must stay on its current branch.
 - `--base <branch>`: optional. Override the base branch instead of auto-detecting `dev`/`develop`/`main`. Used by `/resolve-epic` to target an epic branch. When set, the PR also targets this branch.
 
-Strip `--worktree` and `--base <branch>` from the argument list before parsing `issue` and `tier`. Set `WORKTREE_MODE=true` if `--worktree` was present, otherwise `WORKTREE_MODE=false`. Set `BASE_OVERRIDE` to the branch name if `--base` was present, otherwise leave unset.
+Strip `--worktree`, `--base <branch>`, `--tier <N>`, and `--require-adr` from the argument list before parsing `issue`. Set `WORKTREE_MODE=true` if `--worktree` was present, otherwise `WORKTREE_MODE=false`. Set `BASE_OVERRIDE` to the branch name if `--base` was present, otherwise leave unset. Set `TIER_OVERRIDE` to the tier value if `--tier <N>` or a positional tier argument was present, otherwise leave unset. Set `REQUIRE_ADR=true` if `--require-adr` was present, otherwise `REQUIRE_ADR=false`.
 
 Examples:
 - `/fix-issue 42` → fetch issue #42, auto-detect tier, normal checkout
-- `/fix-issue 42 2` → force Tier 2 regardless of auto-detection
+- `/fix-issue 42 --tier 2` → force Tier 2 regardless of auto-detection
+- `/fix-issue 42 2` → same (positional form, backwards-compat)
 - `/fix-issue 42 --worktree` → fetch issue #42, auto-detect tier, use a git worktree
-- `/fix-issue 42 2 --worktree` → force Tier 2, use a git worktree
+- `/fix-issue 42 --tier 2 --worktree` → force Tier 2, use a git worktree
 - `/fix-issue https://github.com/org/repo/issues/42` → full URL form
 - `/fix-issue 42 --base epic/601-rendering-pipeline` → branch off and PR into the epic branch
+- `/fix-issue 42 --tier 2 --require-adr` → Tier 2 with forced ADR (used by `/resolve-issue`)
 
 Read the agent team guide before doing anything else:
 ```
@@ -281,27 +284,16 @@ Do **not** add this bootstrap to narrow utility agents (Mermaid Agent).
 
 ## Step 1 — Assess Complexity
 
-Read the issue title, body, and comments in full. Then assess:
+**If `TIER_OVERRIDE` is set** (from `--tier <N>` or the positional tier argument):
+- Set `TIER=<TIER_OVERRIDE>`, `TIER_RATIONALE="user-supplied override"`.
+- Set `ADR_REQUIRED=<REQUIRE_ADR>` (true if `--require-adr` was passed, false otherwise).
+- Set `OPEN_QUESTIONS=""`.
+- Skip to Step 2.
 
-**Signals for Tier 1 (simple):**
-- Touches one module or area
-- Bug fix, small feature, config or docs change
-- Requirements fully described in the issue
-- Estimated diff < ~200 lines
+**Otherwise**, invoke `/assess-complexity` with the full issue body (title + body + comments, already fetched above). Parse the returned HANDOFF:
+- `TIER`, `TIER_RATIONALE`, `ADR_REQUIRED`, `ADR_REASON`, `OPEN_QUESTIONS`
 
-**Signals for Tier 2 (medium):**
-- Touches 2–4 loosely coupled areas or layers (e.g. frontend + backend, API + tests)
-- Requirements clear but spans multiple files/domains
-- Estimated diff 200–800 lines
-- May still warrant an Architect if the Planner surfaces open questions (see Step 2b)
-
-**Signals for Tier 3 (complex):**
-- Spans multiple subsystems or teams
-- Issue contains open questions, "TBD", or phrases like "we need to decide"
-- Requires changes to shared interfaces, data models, or config
-- Estimated diff > 800 lines, or significant unknowns
-
-If a `tier` argument was passed, use that and record the rationale as "user-supplied override". Otherwise state your assessment and the signals that drove it. Either way, capture a one-sentence tier rationale — it will be posted to the issue in the pre-implementation comment (Step 2) and reused in the end-of-session report.
+Either way, `TIER_RATIONALE` is posted in the pre-implementation comment (Step 2) and reused in the end-of-session report.
 
 ---
 
@@ -373,26 +365,24 @@ Draft PR: <PR_URL>
 
 **Tier: <1|2|3>** — <one-sentence rationale citing the signals that matched, e.g. "touches frontend + API + tests with clear requirements, est. ~400 line diff" or "user-supplied override">.
 
-**Architecture review (ADR):** <pick exactly one>
-- _Skipping_ — Tier 1: architecture review is not required for simple issues by design.
-- _Skipping_ — Tier 2 with no open questions surfaced by the Planner; requirements are unambiguous.
-- _Required_ — Tier 2 with open questions surfaced by the Planner (listed below); Architect will produce an ADR for review.
-- _Required_ — Tier 3: architecture review is mandatory for complex issues.
+**Architecture review (ADR):** <pick exactly one, based on `ADR_REQUIRED` from Step 1>
+- _Skipping_ — `ADR_REQUIRED=false`: no open questions or architectural concerns; architecture review not required.
+- _Required_ — `ADR_REQUIRED=true` (<ADR_REASON>): Architect will produce an ADR for review.
 
-[If Open Questions section is non-empty:]
+[If OPEN_QUESTIONS non-empty:]
 The following decisions need to be resolved before implementation begins:
 
-<paste Open Questions from the plan>
+<paste OPEN_QUESTIONS from Step 1>
 
 Awaiting architecture review and decisions before coding starts.
 
-[If Open Questions section is empty:]
+[If OPEN_QUESTIONS empty:]
 No open questions. Plan is complete — proceeding directly to implementation.
 EOF
 )"
 ```
 
-**For Tier 2 or Tier 3:** if the plan lists open architecture questions, proceed to Step 2b before spawning any implementation agents. Tier 2 issues with clear requirements and no open questions skip Step 2b entirely.
+**If `ADR_REQUIRED=true`**, proceed to Step 2b before spawning any implementation agents. Otherwise proceed directly to Step 3.
 
 ---
 
@@ -820,6 +810,8 @@ PR: <url>
 ### Next step
 PR is in draft. If invoked via `/resolve-issue`, the orchestrator handles secondary branches (component tests, integration tests, E2E QA) and review automatically. If invoked standalone, run `/pr-review-cycle <PR_NUMBER>` to review, then mark ready when satisfied.
 ```
+
+If this session was invoked via `/resolve-issue`, include `ADR_PATH` in the HANDOFF block: the absolute path to `.agent-work/ISSUE_<number>_ADR.md` if Step 2b produced one, otherwise empty.
 
 ---
 
