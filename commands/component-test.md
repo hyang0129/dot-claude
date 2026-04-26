@@ -4,6 +4,8 @@ version: 1.0.0
 
 # Component Test
 
+> **Cross-referenced by `/component-test-targeted`.** Steps 0, 1, 3, 4, and 5 of this file are referenced verbatim by `commands/component-test-targeted.md` (the Class B / `/resolve-issue` Step 2g path). Do not rename those step headings without updating the targeted skill — references pin to step *names*. Step 2 (Boundary Mapper) is the only step the targeted skill replaces wholesale.
+
 ## Purpose
 
 Writes durable boundary tests that fail when *future, unrelated* changes break the wiring between modules. The primary value is corpus accretion — a deposit that pays out when someone else changes nearby code months from now. The tests are not primarily a check that the current PR works.
@@ -88,6 +90,7 @@ HANDOFF
 SUCCESS=true
 TESTS_WRITTEN=0
 TEST_FILES=
+RUN_COMMAND=
 SLOW_BOUNDARIES=
 TEST_BOUNDARY_SUMMARY=
 FAILURE_REASON=
@@ -370,6 +373,7 @@ HANDOFF
 SUCCESS=<true|false>
 TESTS_WRITTEN=<int>
 TEST_FILES=<comma-separated forward-slash paths>
+RUN_COMMAND=<command to re-run the component tier locally — the same invocation Step 5 used>
 SLOW_BOUNDARIES=<comma-separated B.id where no seam existed, or empty>
 TEST_BOUNDARY_SUMMARY=<one line per boundary, semicolon-separated>
 FAILURE_REASON=<empty if SUCCESS=true; one of: RUNNER_NOT_VERIFIED | NO_TESTS_COLLECTED | USER_DECLINED | NEGATIVE_CONTROL_UNVERIFIED:<id>>
@@ -385,7 +389,7 @@ END_NON_SIMPLE_BUGS
 END_HANDOFF
 ```
 
-Path normalization: always forward slashes, even on Windows. Multi-line values are not supported in HANDOFF — collapse `TEST_BOUNDARY_SUMMARY` to one line, with `; ` between entries.
+Path normalization: always forward slashes, even on Windows. Multi-line values are not supported in HANDOFF — collapse `TEST_BOUNDARY_SUMMARY` to one line, with `; ` between entries. `RUN_COMMAND` is a single-line shell invocation (no newlines, no shell-internal `$(cat ...)` expansions — resolve those into a literal space-separated file list before emitting).
 
 Mark Step 5 done. Stop.
 
@@ -398,6 +402,7 @@ HANDOFF
 SUCCESS=<true|false>
 TESTS_WRITTEN=<int>
 TEST_FILES=<comma-separated forward-slash paths>
+RUN_COMMAND=<command to re-run the component tier locally>
 SLOW_BOUNDARIES=<comma-separated B.id where no seam existed, or empty>
 TEST_BOUNDARY_SUMMARY=<one line per boundary, semicolon-separated>
 FAILURE_REASON=<empty if SUCCESS=true; one of: RUNNER_NOT_VERIFIED | NO_TESTS_COLLECTED | USER_DECLINED | NEGATIVE_CONTROL_UNVERIFIED:<id>>

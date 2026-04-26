@@ -16,6 +16,7 @@ The orchestrator passes these inline:
 - `OUTPUT_TEST_PATH` — absolute path where you must write the new test file.
 - `OUTPUT_RECORD_PATH` — absolute path where you write a small JSON record of what you did.
 - `GIT_ROOT` — repo root.
+- `BUG_CONTEXT` — *optional.* Present only when invoked from `/component-test-targeted`. Free-text from the Fix Planner naming the motivating bug(s) and what the failure looked like. Use it to add one extra line to the test header comment (e.g. `# Motivated by: <BUG_CONTEXT>`) so a future reader of the test can trace it back to the bug it was written for. Does not change the test contents or assertions — they remain a contract about the boundary, not a check that this specific bug stays fixed. Ignore the field if absent.
 
 ---
 

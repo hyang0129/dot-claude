@@ -301,7 +301,7 @@ Read the issue title, body, and comments in full. Then assess:
 - Requires changes to shared interfaces, data models, or config
 - Estimated diff > 800 lines, or significant unknowns
 
-If a `tier` argument was passed, use that. Otherwise state your assessment and the signals that drove it, then proceed.
+If a `tier` argument was passed, use that and record the rationale as "user-supplied override". Otherwise state your assessment and the signals that drove it. Either way, capture a one-sentence tier rationale — it will be posted to the issue in the pre-implementation comment (Step 2) and reused in the end-of-session report.
 
 ---
 
@@ -363,19 +363,28 @@ Role: read-only research. No file writes except the plan document.
 
 After the Planner finishes, read `.agent-work/ISSUE_<number>_PLAN.md`.
 
-**Post pre-implementation status to the issue:**
+**Post pre-implementation status to the issue.** This comment is the durable record of the tier choice and the ADR-write-or-skip decision, so both fields are required every time — never omit them, even for Tier 1.
+
 ```bash
 gh issue comment <number> --repo <owner/repo> --body "$(cat <<'EOF'
 ## Pre-implementation check
 
 Draft PR: <PR_URL>
 
+**Tier: <1|2|3>** — <one-sentence rationale citing the signals that matched, e.g. "touches frontend + API + tests with clear requirements, est. ~400 line diff" or "user-supplied override">.
+
+**Architecture review (ADR):** <pick exactly one>
+- _Skipping_ — Tier 1: architecture review is not required for simple issues by design.
+- _Skipping_ — Tier 2 with no open questions surfaced by the Planner; requirements are unambiguous.
+- _Required_ — Tier 2 with open questions surfaced by the Planner (listed below); Architect will produce an ADR for review.
+- _Required_ — Tier 3: architecture review is mandatory for complex issues.
+
 [If Open Questions section is non-empty:]
 The following decisions need to be resolved before implementation begins:
 
 <paste Open Questions from the plan>
 
-Proceeding to architecture review (Tier 3) / awaiting decisions before coding starts.
+Awaiting architecture review and decisions before coding starts.
 
 [If Open Questions section is empty:]
 No open questions. Plan is complete — proceeding directly to implementation.
