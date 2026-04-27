@@ -58,7 +58,29 @@ Subagent instructions:
 >    gh issue view <number> --repo <owner/repo> --json number,title,body,labels,comments
 >    ```
 > 3. Run `/assess-complexity` with the full issue body (number + title + body + comments).
-> 4. Return as the last thing in your output:
+> 4. **Shared-interface pre-probe.** Run this regardless of what `/assess-complexity` returned for `ADR_REQUIRED`. The goal is to find files likely to be modified and check whether any are shared interfaces — so that `--require-adr` can be forwarded to `/fix-issue` before implementation begins.
+>
+>    **Step 4a — Find candidate files via semantic search.** Do not rely solely on file paths mentioned in the issue text. An implementer discovers which files to change by reading the code; replicate that here:
+>    - Extract domain keywords from the issue: field names, function names, class names, error strings, module names, CLI commands, API endpoints — anything specific to the problem domain.
+>    - For each keyword, search the codebase:
+>      ```bash
+>      grep -rl "<keyword>" <REPO_ROOT> --include="*.py" --include="*.ts" --include="*.go" \
+>        --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=__pycache__
+>      ```
+>    - Also include any file paths or module names explicitly named in the issue text (code blocks, stack traces, prose).
+>    - Union all results. Deduplicate. This is `CANDIDATE_FILES`.
+>    - Limit to the 20 most relevant results (prefer files in `src/`, `lib/`, core packages over tests or docs).
+>
+>    **Step 4b — Check import count for each candidate.** For each file in `CANDIDATE_FILES`, count how many other files import it. Use the repo's language conventions:
+>    - Python: `grep -rl "from <module_stem> import\|import <module_stem>" <REPO_ROOT> --include="*.py" | wc -l`
+>    - TypeScript/JS: `grep -rl "from ['\"].*<stem>['\"]" <REPO_ROOT> --include="*.ts" --include="*.js" | wc -l`
+>    - Go: `grep -rl '".*/<package>"' <REPO_ROOT> --include="*.go" | wc -l`
+>    - Derive `<module_stem>` from the file path (e.g. `src/pyscope_mcp/graph.py` → `graph`).
+>
+>    **Step 4c — Check `.claude-resolve.toml`.** If a `shared_interfaces = ["glob", ...]` key exists, glob-match `CANDIDATE_FILES` against it.
+>
+>    **Step 4d — Set flags.** `SHARED_INTERFACE_HIT=true` if any candidate has ≥ 5 importers or matches a `shared_interfaces` glob. Record matching modules in `SHARED_INTERFACE_MODULES`. If `SHARED_INTERFACE_HIT=true` AND `ADR_REQUIRED=false`, override to `ADR_REQUIRED=true`, `ADR_REASON=SHARED_INTERFACE_SUSPECTED`.
+> 5. Return as the last thing in your output:
 >    ```
 >    HANDOFF
 >    TIER=<1|2|3>
@@ -66,19 +88,22 @@ Subagent instructions:
 >    ADR_REQUIRED=<true|false>
 >    ADR_REASON=<TIER_3 | TIER_2_OPEN_QUESTIONS | SHARED_INTERFACE_SUSPECTED | empty>
 >    OPEN_QUESTIONS=<semicolon-separated, or empty>
+>    SHARED_INTERFACE_HIT=<true|false>
+>    SHARED_INTERFACE_MODULES=<comma-separated, or empty>
 >    END_HANDOFF
 >    ```
 
-Wait for the subagent. Parse the HANDOFF. Store `TIER`, `TIER_RATIONALE`, `ADR_REQUIRED`, `ADR_REASON`, `OPEN_QUESTIONS`.
+Wait for the subagent. Parse the HANDOFF. Store `TIER`, `TIER_RATIONALE`, `ADR_REQUIRED`, `ADR_REASON`, `OPEN_QUESTIONS`, `SHARED_INTERFACE_HIT`, `SHARED_INTERFACE_MODULES`.
 
 Log to the user:
 
 ```
 ## Step 0 — Complexity Assessment
 
-Tier:          <TIER> — <TIER_RATIONALE>
-ADR required:  <ADR_REQUIRED><if ADR_REASON non-empty: " (<ADR_REASON>)">
-Open questions: <OPEN_QUESTIONS or "none">
+Tier:             <TIER> — <TIER_RATIONALE>
+ADR required:     <ADR_REQUIRED><if ADR_REASON non-empty: " (<ADR_REASON>)">
+Shared interface: <SHARED_INTERFACE_HIT><if SHARED_INTERFACE_MODULES non-empty: " (<SHARED_INTERFACE_MODULES>)">
+Open questions:   <OPEN_QUESTIONS or "none">
 ```
 
 ---
@@ -214,22 +239,23 @@ If `SHARED_INTERFACE_HIT=false`, skip this step.
 
 If `SHARED_INTERFACE_HIT=true` AND `ADR_PATH` is empty: stop.
 
-This is an internal consistency error — Step 0 should have set `ADR_REQUIRED=true` (reason: `SHARED_INTERFACE_SUSPECTED`) and `/fix-issue` should have produced an ADR via `--require-adr`. Report to the user:
+Step 0's shared-interface pre-probe works from issue text alone and can miss modules that are only identifiable from the real diff. Step 2 found a shared interface that Step 0 did not detect, so no ADR was requested and `/fix-issue` ran without `--require-adr`. Report to the user:
 
 ```
-Step 2-pre — ADR consistency error
+Step 2-pre — ADR required (shared interface detected post-implementation)
 
-The diff transitively reaches a shared interface ([<SHARED_INTERFACE_MODULES>]),
+The diff transitively reaches a shared interface (<SHARED_INTERFACE_MODULES>),
 but no ADR was produced at .agent-work/ISSUE_<ISSUE_NUMBER>_ADR.md.
 
-Step 0 should have detected SHARED_INTERFACE_SUSPECTED and forwarded --require-adr
-to /fix-issue. This indicates a gap in the Step 0 assessment or a failed ADR step.
+Step 0's pre-probe did not detect this module as a shared interface from the
+issue text — the real diff revealed it. An ADR is now required before proceeding.
 
 Resolve one of:
-  1. Re-run /resolve-issue — Step 0 will re-assess and forward --require-adr.
-  2. Manually author .agent-work/ISSUE_<ISSUE_NUMBER>_ADR.md (one paragraph
-     stating "no design changes; here's why this is safe" is acceptable for
-     trivial changes), then re-run /resolve-issue.
+  1. Author .agent-work/ISSUE_<ISSUE_NUMBER>_ADR.md — one paragraph stating
+     "no design changes; here's why this is safe" is acceptable for additive
+     changes that follow an established pattern.
+  2. Re-run /resolve-issue — Step 0 will now detect <SHARED_INTERFACE_MODULES>
+     via the pre-probe and forward --require-adr to /fix-issue automatically.
 
 PR: <PR_URL>
 ```
