@@ -46,7 +46,7 @@ Default. Run all phases, present a Final Summary, and report results to the user
 
 ## Step 0 — Complexity Assessment
 
-If `--tier <N>` was supplied by the user, skip `/assess-complexity`: set `TIER=<N>`, `TIER_RATIONALE="user-supplied override"`, `ADR_REQUIRED=false`, `OPEN_QUESTIONS=""`. Proceed to Step 1.
+If `--tier <N>` was supplied by the user, skip `/assess-complexity`: set `TIER=<N>`, `TIER_RATIONALE="user-supplied override"`, `ADR_REQUIRED=<true if TIER >= 2, else false>`, `ADR_REASON=<TIER_2 if TIER=2, TIER_3 if TIER=3, else empty>`, `OPEN_QUESTIONS=""`, `SHARED_INTERFACE_HIT=false`, `SHARED_INTERFACE_MODULES=""`. Proceed to Step 1.
 
 Otherwise, spawn a small Agent subagent (`model: "claude-sonnet-4-6"`, read-only tools) to detect the repo, fetch the issue, and run `/assess-complexity`.
 

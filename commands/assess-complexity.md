@@ -44,12 +44,14 @@ Read the issue title, body, and comments in full. Assess the complexity tier and
 
 Set `ADR_REQUIRED=true` when any of:
 - `TIER=3` → `ADR_REASON=TIER_3`
-- `TIER=2` AND open questions are present → `ADR_REASON=TIER_2_OPEN_QUESTIONS`
+- `TIER=2` → `ADR_REASON=TIER_2`
 - Issue text mentions changing shared config, public APIs, or data models → `ADR_REASON=SHARED_INTERFACE_SUSPECTED`
 
-When multiple conditions match, use the highest-priority reason: `TIER_3` > `TIER_2_OPEN_QUESTIONS` > `SHARED_INTERFACE_SUSPECTED`.
+When multiple conditions match, use the highest-priority reason: `TIER_3` > `TIER_2` > `SHARED_INTERFACE_SUSPECTED`.
 
-`SHARED_INTERFACE_SUSPECTED` is a lightweight signal from issue text only. A full shared-interface impact probe runs later in `/resolve-issue` Step 2 as a consistency gate — this upfront flag lets the ADR be requested before `/fix-issue` starts, avoiding mid-run blockers.
+Rationale: any change spanning multiple files or domains (Tier 2+) has enough cross-cutting reach that a one-paragraph ADR is cheap insurance. Tier 1 changes (single module, fully described, < ~200 lines) are self-contained enough that no ADR is needed.
+
+`SHARED_INTERFACE_SUSPECTED` is a lightweight signal from issue text only. A full shared-interface impact probe runs later in `/resolve-issue` Step 0 (pre-probe) and Step 2 as a consistency gate — this upfront flag lets the ADR be requested before `/fix-issue` starts, avoiding mid-run blockers.
 
 **Open questions:** list any decisions or ambiguities not resolvable from the issue text alone. Use semicolons as separators. Leave empty if none.
 
