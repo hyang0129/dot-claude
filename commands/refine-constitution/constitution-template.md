@@ -34,6 +34,8 @@ A complete `CONSTITUTION.md` has these top-level sections in this order:
 ## Review Heuristic
 
 ## Demoted-to-Convention Log   ← amendment artifact, optional
+
+## Filtered Doctrine Candidates   ← challenger artifact, optional
 ```
 
 ### Thesis (required)
@@ -118,6 +120,29 @@ future readers understand that a convention in `CLAUDE.md` was once a law.
 - **Law <former number> — <Stance>**: demoted <YYYY-MM-DD>. Reason: <one sentence>.
   Moved to: CLAUDE.md § <section>.
 ```
+
+### Filtered Doctrine Candidates (challenger artifact, optional)
+
+Populated by the challenger pass when Challenger 4 (Perfect Technology) returns a
+`FAIL` on a candidate law and the author concedes. Each entry is a law candidate that
+was rejected from the constitution as tech-bound and is waiting to become a doctrine
+Standing Order in `DOCTRINE.md`.
+
+This section is **not** part of the completeness check — its absence does not prevent
+the constitution from being marked complete. It is consumed by `/refine-doctrine`
+at Step 1.5 (candidate ingestion).
+
+```
+- **Candidate:** <original stance phrasing verbatim>
+  **Voiced by:** <name or role>
+  **Anchor candidate:** Law N (<stance summary of the law it was trying to extend or anchor to>)
+  **Observable condition:** <the specific technological assumption Challenger 4 named whose removal collapses the rule>
+  **Captured:** <YYYY-MM-DD>
+```
+
+Entries are append-only. When `/refine-doctrine` promotes a candidate to a ratified
+Standing Order, it does not delete the entry here — the tombstone remains so the
+history of the decision is preserved in the constitution.
 
 ---
 

@@ -1,13 +1,13 @@
 # Challenger Subagent Prompts
 
-Three Challengers attack candidate constitution laws from different angles. Run from
+Four Challengers attack candidate constitution laws from different angles. Run from
 **setup phase step 5** (after debate elicitation and opposite-stance test, before law
 drafting), and optionally during **refinement** when an `[UNCHALLENGED]` law is
 revisited.
 
 ## Invocation
 
-Spawn all three Challengers **in parallel** from a single ROOT turn — multiple Agent
+Spawn all four Challengers **in parallel** from a single ROOT turn — multiple Agent
 tool calls in one message. Parallel spawning prevents Challengers from anchoring on
 each other's arguments, and it keeps the session bounded to one round-trip.
 
@@ -153,10 +153,50 @@ project from research, not a construct.
 
 ---
 
+## Challenger 4 — Perfect Technology
+
+```
+You are an adversarial reviewer with one thesis: this candidate law is not eternal
+— it is contingent on current technological limitations and belongs in DOCTRINE.md
+as a Standing Order, not in the constitution.
+
+Apply the perfect-technology test: assume infinite compute, zero latency, perfect
+consistency, no context-window limits, and unlimited human capacity. Under those
+conditions, does this law still hold? A law that only holds because of a current
+technological constraint is tech-bound doctrine, not constitutional law.
+
+You receive: the thesis and the candidate law (stance, scope — no Why). You do NOT
+receive the author's Why. Do not ask for it.
+
+For each candidate, produce one of:
+  (a) PASS — the law holds under perfect technology. Name the specific condition
+      you stress-tested (e.g. "I assumed zero latency and the law still holds
+      because the constraint is about coordination semantics, not speed") and
+      confirm the law belongs in the constitution.
+  (b) FAIL — the law collapses under perfect technology. Identify the single
+      observable technological assumption whose removal makes the rule unnecessary.
+      State it precisely: not "better tools" but the concrete condition (e.g.
+      "reliable sub-millisecond distributed consensus" or "agents with unbounded
+      context retention"). Recommend: "Move to DOCTRINE.md as a Standing Order
+      anchored to this assumption."
+
+One paragraph per candidate. Commit to PASS or FAIL — do not hedge. A PASS that
+says "this might be tech-bound in some interpretations" is not a PASS; pick the
+reading that makes the law hardest to keep and apply the test to that reading.
+
+Failure mode to avoid: calling a law tech-bound because its *implementation* would
+change under perfect technology. The test is about the *stance*, not the
+implementation. "Always prefer idempotent operations" survives perfect technology
+even though the implementation of idempotency changes. "Always batch writes because
+individual writes are expensive" does not.
+```
+
+---
+
 ## Presenting outputs to the user
 
 ```
-Three adversarial angles — each agent saw only the thesis, the candidate law, and
+Four adversarial angles — each agent saw only the thesis, the candidate law, and
 the research findings. None saw your Why.
 
 **[1] Necessity** — is this law load-bearing, or a convention in disguise?
@@ -175,6 +215,11 @@ strongest one?
 
 ---
 
+**[4] Perfect Technology** — is this law eternal, or is it doctrine in disguise?
+<paste Challenger 4 output>
+
+---
+
 Rebut. For each candidate, address each Challenger's concede/attack. Where the
 Challenger attacks, either defend the current form or accept the revision. Where
 the Challenger concedes, confirm or push back. Concessions update the candidate
@@ -184,4 +229,9 @@ list before law drafting.
 A rebuttal that concedes on Necessity demotes the candidate to `CLAUDE.md`. A
 concession on Scope rewrites the scope line before drafting. A concession on
 Rejected Alternative replaces the stated Rejected Alternative with the stronger
-version — and forces the Why to answer the stronger version when drafting begins.
+version — and forces the Why to answer the stronger version when drafting begins. A
+concession on Perfect Technology removes the candidate from the constitution and
+writes it to the `## Filtered Doctrine Candidates` section of `CONSTITUTION.md`
+with the FAIL output's named assumption as the Observable Condition field. It does
+not become a law at all — it waits for `/refine-doctrine` to promote it to a
+Standing Order.
