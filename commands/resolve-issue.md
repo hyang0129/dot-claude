@@ -185,10 +185,10 @@ Append to the subagent prompt:
 >   ```
 >   If no match, `E2E_QA=false` regardless of UI changes.
 >
-> **Step 2.4 — Shared-interface flag.** Compute `SHARED_INTERFACE_HIT`:
+> **Step 2.4 — Shared-interface flag (informational).** Compute `SHARED_INTERFACE_HIT`:
 > - Prefer a project config file at `.claude-resolve.toml` with key `shared_interfaces = ["glob", ...]`. If present, glob-match `IMPACT_SET` against it.
 > - Otherwise heuristic: any module in `IMPACT_SET` imported by ≥ 5 other modules in the codebase (count via `Grep` for import lines naming the module).
-> - `SHARED_INTERFACE_HIT=true|false`. List the matching modules in `SHARED_INTERFACE_MODULES`.
+> - `SHARED_INTERFACE_HIT=true|false`. List the matching modules in `SHARED_INTERFACE_MODULES`. This is informational context for the PR review — there is no gate.
 >
 > **Output.** Write the HANDOFF block to `<WORK_DIR>/.agent-work/assessment-handoff-<ISSUE_NUMBER>.txt` (create the directory if missing) AND emit it as the last thing in your output:
 >
@@ -224,48 +224,11 @@ Log to the user verbatim:
 Impact tool:        <IMPACT_TOOL>
 Direct changes:     <N> files
 Transitive reach:   <count of TRANSITIVE_REACH> modules
-Shared interface:   <true|false> [<SHARED_INTERFACE_MODULES>]
+Shared interface:   <SHARED_INTERFACE_HIT> [<SHARED_INTERFACE_MODULES>]
 
 Component tests:    <true|false> — <COMPONENT_TESTS_REASON>
 Integration tests:  <true|false> — <INTEGRATION_TESTS_REASON>
 E2E QA:             <true|false> — <E2E_QA_REASON>
-```
-
----
-
-## Step 2-pre — Shared-interface ADR gate
-
-If `SHARED_INTERFACE_HIT=false`, skip this step.
-
-If `SHARED_INTERFACE_HIT=true` AND `ADR_PATH` is empty: stop.
-
-Step 0's shared-interface pre-probe works from issue text alone and can miss modules that are only identifiable from the real diff. Step 2 found a shared interface that Step 0 did not detect, so no ADR was requested and `/fix-issue` ran without `--require-adr`. Report to the user:
-
-```
-Step 2-pre — ADR required (shared interface detected post-implementation)
-
-The diff transitively reaches a shared interface (<SHARED_INTERFACE_MODULES>),
-but no ADR was produced at .agent-work/ISSUE_<ISSUE_NUMBER>_ADR.md.
-
-Step 0's pre-probe did not detect this module as a shared interface from the
-issue text — the real diff revealed it. An ADR is now required before proceeding.
-
-Resolve one of:
-  1. Author .agent-work/ISSUE_<ISSUE_NUMBER>_ADR.md — one paragraph stating
-     "no design changes; here's why this is safe" is acceptable for additive
-     changes that follow an established pattern.
-  2. Re-run /resolve-issue — Step 0 will now detect <SHARED_INTERFACE_MODULES>
-     via the pre-probe and forward --require-adr to /fix-issue automatically.
-
-PR: <PR_URL>
-```
-
-Do not proceed.
-
-If `ADR_PATH` is non-empty, log it and continue:
-
-```
-Step 2-pre — ADR present at <ADR_PATH>. Proceeding.
 ```
 
 ---
@@ -777,7 +740,6 @@ Present:
 
 Phase 1 — fix-issue:           ✓ PR #<PR_NUMBER> created (<PR_URL>)
 Phase 2 — assessment:          impact tool=<IMPACT_TOOL>, transitive reach=<count of TRANSITIVE_REACH> modules
-Phase 2-pre — ADR gate:        <✓ present | — n/a (no shared interface hit)>
 Phase 2a — component tests:    <✓ <N> tests written | — skipped (<reason>)>
 Phase 2b — integration tests:  <✓ <N> tests written (wiring=<W>, artifact=<A>) | — skipped (<reason>)>
 Phase 2e — bug review:         <✓ Classification <A|B|C> (<bug count> bugs) | — n/a (no non-simple bugs)>
