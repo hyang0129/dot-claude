@@ -37,7 +37,7 @@ The refined spec is the intended input to `/resolve-issue` or `/fix-issue`.
 
 ## Args
 
-`/refine-issue <issue> [--no-post] [--base <branch>]`
+`/refine-issue <issue> [--no-post] [--base <branch>] [--obvious]`
 
 - `issue`: required. One of:
   - GitHub issue number (e.g. `42`)
@@ -47,6 +47,14 @@ The refined spec is the intended input to `/resolve-issue` or `/fix-issue`.
   local only — do not post it to GitHub. Ignored in free-form mode (see below).
 - `--base <branch>`: optional flag. Specifies the base branch to check out before scanning the
   codebase. If omitted, the base branch is auto-detected (see Setup).
+- `--obvious`: optional flag. Skip the interactive intent interview. A user-surrogate subagent
+  answers the probe dimensions from the issue body + codebase + constitution, citing sources
+  for each answer and marking anything it cannot ground as `[unanswered]`. ROOT then presents
+  the surrogate's draft intent summary for a single confirm/correct round before proceeding
+  to Step 3. Use this when the issue body is detailed enough that intent is mechanical (dead
+  code removal, field renames, well-documented bugfixes). If the surrogate returns mostly
+  `[unanswered]` markers or many `[ESCALATE]` entries, that's a signal the issue is not
+  actually obvious — drop the flag and run the interactive flow.
 
 Detect whether `issue` is a number/URL/repo-ref or a free-form description:
 - If it matches `^[\w.-]+/[\w.-]+#\d+$` (e.g. `owner/repo#42`) → extract `owner/repo` and issue number.
@@ -110,11 +118,56 @@ fi
 
 CURRENT_BRANCH="$(git branch --show-current)"
 if [ "$CURRENT_BRANCH" != "$BASE_BRANCH" ]; then
+  # Refuse to switch away from a dirty working tree — the user has uncommitted work.
+  if [ -n "$(git status --porcelain)" ]; then
+    echo "Working tree has uncommitted changes on $CURRENT_BRANCH. Stash or commit before re-running." >&2
+    exit 1
+  fi
   git checkout "$BASE_BRANCH"
+fi
+
+# Sync the base branch with its remote so the codebase scan sees current code.
+# Working tree must be clean (already enforced above when switching branches; re-check in
+# case we were already on the base branch with dirty state).
+if [ -n "$(git status --porcelain)" ]; then
+  echo "Working tree on $BASE_BRANCH is dirty. Stash or commit before re-running." >&2
+  exit 1
+fi
+
+SYNC_NOTE=""
+if git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1; then
+  REMOTE="$(git rev-parse --abbrev-ref '@{u}' | cut -d/ -f1)"
+  git fetch --quiet "$REMOTE" "$BASE_BRANCH" 2>/dev/null || true
+  LOCAL_SHA="$(git rev-parse HEAD)"
+  REMOTE_SHA="$(git rev-parse '@{u}')"
+  BASE_SHA="$(git merge-base HEAD '@{u}')"
+  if [ "$LOCAL_SHA" = "$REMOTE_SHA" ]; then
+    SYNC_NOTE=""  # already up to date
+  elif [ "$LOCAL_SHA" = "$BASE_SHA" ]; then
+    git merge --ff-only '@{u}' >/dev/null
+    SYNC_NOTE=" (fast-forwarded to $REMOTE/$BASE_BRANCH)"
+  elif [ "$REMOTE_SHA" = "$BASE_SHA" ]; then
+    SYNC_NOTE=" (local is ahead of $REMOTE/$BASE_BRANCH — not syncing)"
+  else
+    echo "Base branch $BASE_BRANCH has diverged from $REMOTE/$BASE_BRANCH." >&2
+    echo "Resolve the divergence (rebase, reset, or pick a different --base) before re-running." >&2
+    echo "Refusing to scan against a base that doesn't match the remote — the spec would describe code the reviewers can't see." >&2
+    exit 1
+  fi
+else
+  # No upstream. If we plan to post to GitHub, we cannot validate that the local code matches
+  # the GitHub repo we're publishing to — bail. If --no-post was passed, the spec is local
+  # only and a missing remote is acceptable.
+  if [ "<NO_POST_FLAG>" != "true" ]; then
+    echo "Base branch $BASE_BRANCH has no upstream tracking — cannot verify it matches the GitHub repo we'd be posting to." >&2
+    echo "Either set tracking (git branch --set-upstream-to=<remote>/$BASE_BRANCH) or re-run with --no-post." >&2
+    exit 1
+  fi
+  SYNC_NOTE=" (no upstream — local-only spec)"
 fi
 ```
 
-Tell the user: `On branch <BASE_BRANCH>.` (one line; omit if already on that branch).
+Tell the user: `On branch <BASE_BRANCH><SYNC_NOTE>.` (one line; omit if already on that branch and no sync note). If the "ahead" warning fires, surface it prominently — the spec's surface-area table may reference lines that don't exist on the remote yet.
 
 ### Fetch the issue (issue reference mode only)
 
@@ -224,7 +277,61 @@ Resume the interview from the saved Q&A (r) or start over (s)?
 
 ---
 
-## Step 2 — Intent Interview (interactive, multi-round)
+## Step 2 — Intent Interview
+
+**Mode selection:**
+- If `--obvious` was passed → run the **surrogate flow** (Step 2a).
+- Otherwise → run the **interactive flow** (Step 2b, the default).
+
+---
+
+### Step 2a — Surrogate flow (`--obvious` only)
+
+Spawn the user-surrogate subagent (`commands/refine-issue/surrogate-prompt.md`,
+`model: "claude-sonnet-4-6"`). Pass it:
+
+- The full issue body and comments (or the free-form description, in free-form mode).
+- `GIT_ROOT` (or note that codebase context is unavailable).
+- `CONSTITUTION_PATH` (empty if no constitution was loaded).
+- The output path: `.agent-work/INTENT_<slug>-<id>.md`.
+- The slug and id, so the surrogate can produce the file directly.
+
+The surrogate runs the same probe dimensions the interactive flow uses, answers each
+from the inputs (with `Source:` citations), marks anything ungrounded as `[unanswered]`,
+and writes the `INTENT_<slug>-<id>.md` file in one shot. It does **not** post to GitHub
+— that happens after the user confirms below.
+
+When the surrogate returns, present its work to the real user:
+
+1. Render the draft intent summary in chat (read the file the surrogate wrote).
+2. List `[unanswered]` entries explicitly, e.g.:
+   *"Surrogate could not ground 2 probes: priority/timeline, downstream-dependency.
+   Issue body is silent on both."*
+3. List any `[ESCALATE]` entries verbatim — these are questions the surrogate flagged
+   for the human.
+4. Ask:
+   ```
+   Confirm to proceed to spec, or correct anything?
+   ```
+
+Resolution:
+- **User confirms** → finalize the intent file (strip the `[DRAFT — surrogate]` marker
+  from the title). Post the finalized intent to GitHub once (issue-ref mode: comment;
+  free-form mode: create the issue). Proceed to Step 3.
+- **User corrects** → apply the correction to the intent file directly. If the
+  correction surfaces a new dimension or open question rather than a simple text fix,
+  fall through into the interactive flow (Step 2b) using the corrected file as the
+  starting point — the user's correction counts as Round 1. When the user re-confirms,
+  finalize and proceed to Step 3.
+
+If `GIT_ROOT` is empty **and** the issue body is shorter than ~10 lines, warn before
+spawning the surrogate: *"Limited grounding available — codebase context is unavailable
+and the issue body is short. Surrogate may return many `[unanswered]` entries. Proceed
+with `--obvious` (y) or drop into interactive (n)?"* — and respect the user's choice.
+
+---
+
+### Step 2b — Interactive flow (default)
 
 Conduct the intent interview directly in this session. Do not spawn a subagent for this step.
 
