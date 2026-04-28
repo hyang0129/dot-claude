@@ -167,6 +167,8 @@ After Step 5: mark Step 5 done, Step 6 `in_progress`.
 
 Apply `/integration-test` **Step 6 — Smoke Run and HANDOFF** verbatim, with one addition to the HANDOFF block: include `UNRESOLVED_SCENARIOS` from Step 2 so the orchestrator's Final Summary can surface them.
 
+This includes the commit step from the parent — after the smoke run passes, tests and golden fixtures are committed on the feature branch (not just staged).
+
 ### Emit HANDOFF
 
 ```

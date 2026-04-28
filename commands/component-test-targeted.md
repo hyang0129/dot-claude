@@ -171,6 +171,8 @@ After Step 4: mark Step 4 done, Step 5 `in_progress`.
 
 Apply `/component-test` **Step 5 — Suite Run and HANDOFF** verbatim, with one addition to the HANDOFF block: include `UNRESOLVED_BOUNDARIES` from Step 2 so the orchestrator's Final Summary can surface them.
 
+This includes the commit step from the parent — after the suite passes, tests are committed on the feature branch (not just staged).
+
 ### Emit HANDOFF
 
 ```

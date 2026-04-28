@@ -453,7 +453,7 @@ Hard rule for the fixer: may not weaken assertions (no replacing exact-value che
 
 ### Golden fixture staging
 
-If artifact tests were written, the writers placed generated goldens at `$WORK_DIR/golden/<S.id>.golden.json`. Move them to the committed location:
+If artifact tests were written, the writers placed generated goldens at `$WORK_DIR/golden/<S.id>.golden.json`. Move them to the committed location and stage alongside the test files — they are committed together in the step below:
 
 ```bash
 mkdir -p "$GIT_ROOT/tests/integration/golden"
@@ -461,19 +461,24 @@ cp "$WORK_DIR/golden/"*.json "$GIT_ROOT/tests/integration/golden/" 2>/dev/null |
 git add "$GIT_ROOT/tests/integration/golden/" 2>/dev/null || true
 ```
 
-Golden fixtures are committed alongside the tests. Do not generate from live production data. If `volatile_output: true`, no golden file is generated.
+Do not generate from live production data. If `volatile_output: true`, no golden file is generated.
 
-### Stage test files (do not commit)
+### Commit test files
 
 ```bash
 git add $(cat "$WORK_DIR/test-files.txt")
+git commit -m "test(integration): add integration tests for $(cat "$WORK_DIR/test-files.txt" | wc -l) scenarios
+
+$(cat "$WORK_DIR/test-files.txt" | tr '\n' ' ')
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 ```
 
-Leave files staged; do not commit. The calling orchestrator (or the user, if invoked directly) decides when to commit. If `--interactive`, print a summary before staging:
+If `--interactive`, print a summary before committing:
 
 ```
 [integration-test] <N> tests written, wiring smoke green, falsifiability verified.
-Staging files — commit when ready.
+Committing tests.
 ```
 
 ### Emit HANDOFF
@@ -530,7 +535,7 @@ Mark Step 6 done. Stop.
 
 - Integration tests must be tagged so artifact tier does not run on every CI push.
 - Tests run against real infrastructure. Do not introduce new fakes for infrastructure collaborators — use what the project already has, or stop with `INFRA_UNKNOWN`.
-- Never commit to `main`/`master`. Stage; commit only on the feature branch.
+- Never commit to `main`/`master`. Commit only on the feature branch.
 - Golden fixtures are committed alongside tests. Do not generate from live production data.
 - Subagents communicate only via `$WORK_DIR/*.json` files. No subagent receives another subagent's transcript.
 - Writers must not share state assumptions. Each scenario's test file must be independently executable.

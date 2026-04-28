@@ -353,17 +353,22 @@ If the suite run has any failures:
 
 Hard rule for the fixer: may not weaken assertions (no replacing specific-value assertions with `.toBeDefined()`, no removing assertions, no changing expected values). Weakening = reclassify as non-simple.
 
-### Stage files (do not commit)
+### Commit tests
 
 ```bash
 git add $(cat "$WORK_DIR/test-files.txt")
+git commit -m "test(component): add boundary tests for $(cat "$WORK_DIR/test-files.txt" | wc -l) boundaries
+
+$(cat "$WORK_DIR/test-files.txt" | tr '\n' ' ')
+
+Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
 ```
 
-Leave files staged; do not commit. The calling orchestrator (or the user, if invoked directly) decides when to commit. If `--interactive`, print a summary before staging:
+If `--interactive`, print a summary before committing:
 
 ```
 [component-test] <N> tests written, all green, negative control verified.
-Staging files — commit when ready.
+Committing tests.
 ```
 
 ### Emit HANDOFF
@@ -442,7 +447,7 @@ END_HANDOFF
 
 - Never write or modify source files. Test files only.
 - Tests must use the project's existing framework — no new test library.
-- Never commit to `main`/`master`. Stage; commit only on the feature branch.
+- Never commit to `main`/`master`. Commit only on the feature branch.
 - If blocked or uncertain about framework conventions, emit `SUCCESS=false` with a specific `FAILURE_REASON` rather than guessing.
 - Subagents communicate only via `$WORK_DIR/*.json` files. No subagent receives another subagent's transcript.
 - The Sabotage Planner must never receive test assertions — only the structural signature from Step 4a.
