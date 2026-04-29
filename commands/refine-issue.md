@@ -444,6 +444,15 @@ attempt to summarize or restate the issue back to the user — start asking.
   - At least one hidden assumption the issue didn't surface
   - What "done" looks like from the user's perspective
   - What's explicitly out of scope
+- **Before signalling completion, do a final constitution check** (only when a constitution was
+  detected in Setup). With the full intent now in view — job statement, behavioral intent,
+  assumptions, scope carve-outs — scan the loaded constitution for any tension that only becomes
+  visible in the *aggregate* (i.e., a combination of answers that collectively leave a surface
+  non-compliant, even if each individual answer passed its per-question check). This is distinct
+  from probe dimension 6: dimension 6 fires mid-interview when intent is still being assembled;
+  this check fires against the complete, coherent picture. If a tension is found, include it as
+  a `**Constitution tension:**` bullet in the completion summary below — do not re-enter probe
+  rounds. If no tensions are found, omit the bullet entirely.
 - Signal completion by saying:
   ```
   I think I have a complete picture of your intent. Here's what I'll hand off to the spec:
@@ -453,6 +462,9 @@ attempt to summarize or restate the issue back to the user — start asking.
   **Key hidden assumptions:** <bullet list>
   **Done looks like:** <what the user will check>
   **Out of scope:** <explicit exclusions>
+  **Constitution tension:** <only present if the final check found an aggregate tension — cite
+  the specific clause and the carve-out or scope choice that creates it. Omit this line
+  entirely if no tensions were found.>
 
   Does this capture it accurately, or is there anything to correct?
   ```
