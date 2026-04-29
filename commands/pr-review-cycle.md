@@ -101,42 +101,6 @@ gh pr view <pr-number> --json reviews --jq '.reviews | length'
 ```
 If the result is `0` (no reviews), set `NEEDS_INITIAL_REVIEW = true`. Otherwise set it to `false`.
 
-### Bundle helpers
-
-Used by the REVIEW_BUNDLE and INTENT_BUNDLE assembly steps below. Define once here:
-
-```bash
-# Files excluded from bundle contents (still referenced by path, but not inlined)
-BUNDLE_SKIP_PATTERNS='\.lock$|-lock\.|\.min\.(js|css)$|\.generated\.|^(dist|build|node_modules)/'
-
-# Bundles over this many lines drop per-file contents and keep only diffs +
-# metadata. 5000 lines ≈ 30K tokens — above that, cache-write cost starts to
-# outweigh the turn-count savings.
-BUNDLE_SOFT_CAP_LINES=5000
-
-# Usage: bundle_truncate_if_oversized <bundle-path>
-# Rewrites the bundle in place, preserving everything up to the first
-# "## Touched files" or "## Current contents" header, then appending a
-# truncation marker + the repo-context footer.
-bundle_truncate_if_oversized() {
-  local bundle="$1"
-  local n
-  n=$(wc -l < "$bundle")
-  if [ "$n" -le "$BUNDLE_SOFT_CAP_LINES" ]; then return 0; fi
-  local cutoff
-  cutoff=$(grep -n -E '^## (Touched files|Current contents)' "$bundle" | head -1 | cut -d: -f1)
-  [ -z "$cutoff" ] && return 0
-  {
-    head -n "$cutoff" "$bundle"
-    echo
-    echo "BUNDLE_TRUNCATED=true  # original was $n lines; per-file contents omitted"
-    echo
-    echo '## Repo context'
-    [ -f "$GIT_ROOT/CLAUDE.md" ]      && { echo '### $GIT_ROOT/CLAUDE.md';   cat "$GIT_ROOT/CLAUDE.md"; }
-    [ -f "$HOME/.claude/CLAUDE.md" ]  && { echo '### ~/.claude/CLAUDE.md';    cat "$HOME/.claude/CLAUDE.md"; }
-  } > "$bundle.tmp" && mv "$bundle.tmp" "$bundle"
-}
-```
 
 ### Capture pre-loop HEAD
 
@@ -156,7 +120,6 @@ Write `.agent-work/REVIEW_BUNDLE.md` before the first Reviewer spawn. The bundle
 PR_NUM=<pr-number>
 BUNDLE="$GIT_ROOT/.agent-work/REVIEW_BUNDLE.md"
 
-# PR metadata + diff (top of bundle)
 {
   echo "# Review bundle for PR #$PR_NUM"
   echo
@@ -173,37 +136,13 @@ BUNDLE="$GIT_ROOT/.agent-work/REVIEW_BUNDLE.md"
   gh pr diff "$PR_NUM"
   echo '```'
   echo
-  echo '## Touched files (current contents)'
-} > "$BUNDLE"
-
-# Per-file contents, skipping binary/generated patterns, capped at 1000 lines each
-gh pr view "$PR_NUM" --json files --jq '.files[].path' | while read -r f; do
-  if [[ "$f" =~ $BUNDLE_SKIP_PATTERNS ]] || [[ ! -f "$GIT_ROOT/$f" ]]; then
-    printf '\n<file path="%s" skipped="binary-or-generated-or-deleted"/>\n' "$f" >> "$BUNDLE"
-    continue
-  fi
-  printf '\n<file path="%s">\n```\n' "$f" >> "$BUNDLE"
-  head -n 1000 "$GIT_ROOT/$f" >> "$BUNDLE"
-  printf '\n```\n</file>\n' >> "$BUNDLE"
-done
-
-# Repo + global context at the bottom (smallest, least hot)
-{
-  echo
   echo '## Repo context'
   [ -f "$GIT_ROOT/CLAUDE.md" ]      && { echo '### $GIT_ROOT/CLAUDE.md';   cat "$GIT_ROOT/CLAUDE.md"; }
   [ -f "$HOME/.claude/CLAUDE.md" ]  && { echo '### ~/.claude/CLAUDE.md';    cat "$HOME/.claude/CLAUDE.md"; }
   INDEX="$GIT_ROOT/docs/agent_index.md"
   [ -f "$INDEX" ]                    && { echo '### docs/agent_index.md (first 200 lines)'; head -n 200 "$INDEX"; }
   [ -f "$GIT_ROOT/.codesight/CODESIGHT.md" ] && { echo '### .codesight/CODESIGHT.md'; cat "$GIT_ROOT/.codesight/CODESIGHT.md"; }
-} >> "$BUNDLE"
-
-# Save the skipped-file list for transparency
-grep '<file path=.*skipped=' "$BUNDLE" | head -20 \
-  > "$GIT_ROOT/.agent-work/REVIEW_BUNDLE_SKIPPED.txt" 2>/dev/null || true
-
-# Apply the 5000-line size cap
-bundle_truncate_if_oversized "$BUNDLE"
+} > "$BUNDLE"
 ```
 
 Track state:
@@ -238,12 +177,9 @@ The **Reviewer** and **Intent Validator** do NOT receive this preamble — their
 The review bundle below contains:
 - PR metadata (title, body, base, head, +/- counts)
 - The full PR diff
-- Current contents of every touched file (or `skipped=` markers for binary/generated/deleted files; check `.agent-work/REVIEW_BUNDLE_SKIPPED.txt` if you need the list)
 - Repo `CLAUDE.md`, global `~/.claude/CLAUDE.md`, and the codebase index excerpt
 
-**Do NOT re-read the bundle's contents** via `Read` or `Bash`. Use `Read`/`Grep` only for files NOT in the bundle — typically callers of touched functions or analogous patterns elsewhere in the codebase, and only when the review genuinely needs them.
-
-If the bundle header contains `BUNDLE_TRUNCATED=true`, the per-file contents were dropped due to size. Fall back to `Read` on individual files as needed.
+Use `Read`/`Grep` freely to fetch full file contents, callers of touched functions, or analogous patterns elsewhere in the codebase whenever the diff alone is insufficient context.
 
 When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/REVIEW_BUNDLE.md)` into the `<BUNDLE>` slot below:
 
