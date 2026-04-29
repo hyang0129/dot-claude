@@ -427,16 +427,14 @@ git push origin <branch>
 
 The intent bundle below contains:
 - The **pre-loop HEAD SHA** (captured before any Fixer committed)
-- The **pre-loop PR diff** — what the original author wrote
-- The **post-loop commits and diff** — what the automated fix cycles added
-- **Current contents of every file touched by either diff**
+- The **PR metadata** (title, body) — the stated intent
+- The **fix-loop commits** — what the automated cycles added
+- The **fix-loop diff** (`PRE_LOOP..HEAD`) — exactly what the fixers changed, with `-`/`+` lines showing pre- and post-loop state for every touched line
 - Repo + global `CLAUDE.md`, codebase index excerpt
 
-**Do NOT re-run `git diff`, `git log`, or `Read` the touched files** — that information is already in your prompt. Use `Read`/`Grep` only if you need to check a caller or invariant in a file NOT listed in the bundle.
+The `-`/`+` lines in the fix-loop diff are your primary evidence. For surrounding context (callers, invariants, lines not in the diff), use `Read`/`Grep` freely.
 
-If the bundle header contains `INTENT_BUNDLE_DEGRADED=true`, the pre-loop HEAD was unreachable (likely a mid-loop rebase). The diffs in the bundle are reconstructed from the base branch tip, which may include changes the original author didn't write. If you distrust the bundle, you may `Bash git log` yourself — but note the degraded state in your output.
-
-Cross-check: the pre-loop SHA is in the bundle header. If you need to verify the bundle wasn't miscomposed, run `git cat-file -e <sha>^{commit}` and `git diff <sha>..HEAD` directly.
+If the bundle is missing or the pre-loop SHA is absent, the session was interrupted — do not proceed; report the issue to the user.
 
 When spawning, the skill inlines `$(cat $GIT_ROOT/.agent-work/INTENT_BUNDLE.md)` into the `<BUNDLE>` slot below:
 
@@ -595,72 +593,42 @@ Before spawning the Intent Validator, write `.agent-work/INTENT_BUNDLE.md`:
 PR_NUM=<pr-number>
 BUNDLE="$GIT_ROOT/.agent-work/INTENT_BUNDLE.md"
 PRE_LOOP="$(cat "$GIT_ROOT/.agent-work/PRE_LOOP_HEAD.sha")"
-BASE_REF="<base-branch>"  # from gh pr view baseRefName
 
-# Verify the pre-loop SHA is still reachable. A mid-loop rebase could have
-# orphaned it. If so, degrade gracefully.
+# Verify the pre-loop SHA is still reachable. A mid-loop rebase rewrites
+# commits and orphans the saved SHA, making the fixer diff untrustworthy.
 if ! git -C "$GIT_ROOT" cat-file -e "$PRE_LOOP^{commit}" 2>/dev/null; then
-  DEGRADED=true
-else
-  DEGRADED=false
+  echo "ERROR: pre-loop HEAD $PRE_LOOP is no longer reachable — the branch was rebased during the review cycle."
+  echo "The fix-loop diff cannot be reconstructed reliably. Stop the review cycle and re-run /pr-review-cycle from scratch on the rebased branch."
+  exit 1
 fi
 
 {
   echo "# Intent validation bundle for PR #$PR_NUM"
   echo
   echo "- Pre-loop HEAD SHA: \`$PRE_LOOP\`"
-  [ "$DEGRADED" = true ] && echo '- **INTENT_BUNDLE_DEGRADED=true** — pre-loop HEAD unreachable (rebase?); diffs below are reconstructed from base-branch tip instead'
   echo
-  echo '## Pre-loop PR diff (original author intent)'
+  echo '## PR metadata'
+  gh pr view "$PR_NUM" \
+    --json number,title,body,baseRefName,headRefName,additions,deletions \
+    --jq '"- Title: " + .title + "\n- Base: " + .baseRefName
+          + "\n- Head: " + .headRefName
+          + "\n- +" + (.additions|tostring) + " / -" + (.deletions|tostring)
+          + "\n\n### Body\n" + .body'
+  echo
+  echo '## Fix-loop commits'
+  git -C "$GIT_ROOT" log --oneline "$PRE_LOOP..HEAD"
+  echo
+  echo '## Fix-loop diff (automated changes only)'
   echo '```diff'
-  cat "$GIT_ROOT/.agent-work/PR_DIFF.txt" 2>/dev/null \
-    || gh pr diff "$PR_NUM"
+  git -C "$GIT_ROOT" diff "$PRE_LOOP..HEAD"
   echo '```'
-  echo
-  echo '## Post-loop commits (added by automated fix cycles)'
-  if [ "$DEGRADED" = false ]; then
-    git -C "$GIT_ROOT" log --oneline "$PRE_LOOP..HEAD"
-    echo
-    echo '## Post-loop diff'
-    echo '```diff'
-    git -C "$GIT_ROOT" diff "$PRE_LOOP..HEAD"
-    echo '```'
-  else
-    git -C "$GIT_ROOT" log --oneline "origin/$BASE_REF..HEAD"
-    echo
-    echo '## Post-loop diff (degraded — reconstructed from base)'
-    echo '```diff'
-    git -C "$GIT_ROOT" diff "origin/$BASE_REF..HEAD"
-    echo '```'
-  fi
-  echo
-  echo '## Current contents of files touched by either diff'
-} > "$BUNDLE"
-
-# Union of files in pre-loop PR and post-loop fix commits
-{
-  gh pr view "$PR_NUM" --json files --jq '.files[].path'
-  [ "$DEGRADED" = false ] && git -C "$GIT_ROOT" diff --name-only "$PRE_LOOP..HEAD"
-} | sort -u | while read -r f; do
-  if [[ ! -f "$GIT_ROOT/$f" ]]; then continue; fi
-  if [[ "$f" =~ $BUNDLE_SKIP_PATTERNS ]]; then continue; fi
-  printf '\n<file path="%s">\n```\n' "$f" >> "$BUNDLE"
-  head -n 1000 "$GIT_ROOT/$f" >> "$BUNDLE"
-  printf '\n```\n</file>\n' >> "$BUNDLE"
-done
-
-# Repo context footer (same as REVIEW_BUNDLE)
-{
   echo
   echo '## Repo context'
   [ -f "$GIT_ROOT/CLAUDE.md" ]      && { echo '### $GIT_ROOT/CLAUDE.md'; cat "$GIT_ROOT/CLAUDE.md"; }
   [ -f "$HOME/.claude/CLAUDE.md" ]  && { echo '### ~/.claude/CLAUDE.md'; cat "$HOME/.claude/CLAUDE.md"; }
   INDEX="$GIT_ROOT/docs/agent_index.md"
   [ -f "$INDEX" ]                    && { echo '### docs/agent_index.md (first 200 lines)'; head -n 200 "$INDEX"; }
-} >> "$BUNDLE"
-
-# Apply the 5000-line size cap (same helper as REVIEW_BUNDLE)
-bundle_truncate_if_oversized "$BUNDLE"
+} > "$BUNDLE"
 ```
 
 When spawning the Intent Validator, inline the intent bundle into its prompt by substituting `$(cat $GIT_ROOT/.agent-work/INTENT_BUNDLE.md)` into the `<BUNDLE>` slot of the Intent Validator agent spec.
