@@ -53,34 +53,43 @@ Otherwise, spawn a small Agent subagent (`model: "claude-sonnet-4-6"`, read-only
 Subagent instructions:
 
 > 1. **Repo detection**: use `git remote -v` and `gh repo view --json nameWithOwner` to detect `owner/repo`. If the issue arg is a full URL, extract `owner/repo` directly. Do not prompt for confirmation — detection only.
-> 2. Fetch the issue:
+> 2. **Base branch detection.** If `--base <branch>` was passed to `/resolve-issue`, set `BASE=<branch>`. Otherwise auto-detect:
+>    ```bash
+>    git fetch origin
+>    git ls-remote --heads origin dev develop 2>/dev/null
+>    ```
+>    - If `dev` exists on the remote → `BASE=dev`
+>    - Else if `develop` exists → `BASE=develop`
+>    - Else → `BASE=main` (or `master` if `main` does not exist on the remote)
+>
+>    All codebase searches in Step 4 must run against `origin/<BASE>`, not the current working tree. This ensures the complexity assessment reflects the default branch state regardless of what branch is checked out locally.
+> 3. Fetch the issue:
 >    ```bash
 >    gh issue view <number> --repo <owner/repo> --json number,title,body,labels,comments
 >    ```
-> 3. Run `/assess-complexity` with the full issue body (number + title + body + comments).
-> 4. **Shared-interface pre-probe.** Run this regardless of what `/assess-complexity` returned for `ADR_REQUIRED`. The goal is to find files likely to be modified and check whether any are shared interfaces — so that `--require-adr` can be forwarded to `/fix-issue` before implementation begins.
+> 4. Run `/assess-complexity` with the full issue body (number + title + body + comments).
+> 5. **Shared-interface pre-probe.** Run this regardless of what `/assess-complexity` returned for `ADR_REQUIRED`. The goal is to find files likely to be modified and check whether any are shared interfaces — so that `--require-adr` can be forwarded to `/fix-issue` before implementation begins.
 >
 >    **Step 4a — Find candidate files via semantic search.** Do not rely solely on file paths mentioned in the issue text. An implementer discovers which files to change by reading the code; replicate that here:
 >    - Extract domain keywords from the issue: field names, function names, class names, error strings, module names, CLI commands, API endpoints — anything specific to the problem domain.
->    - For each keyword, search the codebase:
+>    - For each keyword, search `origin/<BASE>` using `git grep` (searches the tree object without touching the working tree):
 >      ```bash
->      grep -rl "<keyword>" <REPO_ROOT> --include="*.py" --include="*.ts" --include="*.go" \
->        --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.venv --exclude-dir=__pycache__
+>      git grep -l "<keyword>" origin/<BASE> -- "*.py" "*.ts" "*.go"
 >      ```
 >    - Also include any file paths or module names explicitly named in the issue text (code blocks, stack traces, prose).
 >    - Union all results. Deduplicate. This is `CANDIDATE_FILES`.
 >    - Limit to the 20 most relevant results (prefer files in `src/`, `lib/`, core packages over tests or docs).
 >
->    **Step 4b — Check import count for each candidate.** For each file in `CANDIDATE_FILES`, count how many other files import it. Use the repo's language conventions:
->    - Python: `grep -rl "from <module_stem> import\|import <module_stem>" <REPO_ROOT> --include="*.py" | wc -l`
->    - TypeScript/JS: `grep -rl "from ['\"].*<stem>['\"]" <REPO_ROOT> --include="*.ts" --include="*.js" | wc -l`
->    - Go: `grep -rl '".*/<package>"' <REPO_ROOT> --include="*.go" | wc -l`
+>    **Step 4b — Check import count for each candidate.** For each file in `CANDIDATE_FILES`, count how many other files import it. Search `origin/<BASE>` using `git grep`:
+>    - Python: `git grep -l "from <module_stem> import\|import <module_stem>" origin/<BASE> -- "*.py" | wc -l`
+>    - TypeScript/JS: `git grep -l "from ['\"].*<stem>['\"]" origin/<BASE> -- "*.ts" "*.js" | wc -l`
+>    - Go: `git grep -l '".*/<package>"' origin/<BASE> -- "*.go" | wc -l`
 >    - Derive `<module_stem>` from the file path (e.g. `src/pyscope_mcp/graph.py` → `graph`).
 >
->    **Step 4c — Check `.claude-resolve.toml`.** If a `shared_interfaces = ["glob", ...]` key exists, glob-match `CANDIDATE_FILES` against it.
+>    **Step 4c — Check `.claude-resolve.toml`.** Read it from the base branch: `git show origin/<BASE>:.claude-resolve.toml 2>/dev/null`. If a `shared_interfaces = ["glob", ...]` key exists, glob-match `CANDIDATE_FILES` against it.
 >
 >    **Step 4d — Set flags.** `SHARED_INTERFACE_HIT=true` if any candidate has ≥ 5 importers or matches a `shared_interfaces` glob. Record matching modules in `SHARED_INTERFACE_MODULES`. If `SHARED_INTERFACE_HIT=true` AND `ADR_REQUIRED=false`, override to `ADR_REQUIRED=true`, `ADR_REASON=SHARED_INTERFACE_SUSPECTED`.
-> 5. Return as the last thing in your output:
+> 6. Return as the last thing in your output:
 >    ```
 >    HANDOFF
 >    TIER=<1|2|3>
