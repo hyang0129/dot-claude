@@ -1,0 +1,22 @@
+# Example config for: oz agent run -f this-file.yaml   (or run-cloud -f ...)
+# env override: WARP_AGENT_CONFIG_FILE=/path/to/config.yaml
+# JSON is also accepted. Only `prompt` (or saved-prompt/skill) is strictly required;
+# everything else is optional and maps to the run-cloud flags.
+
+name: example-task                 # short, greppable label (-n)
+prompt: |
+  <complete, self-contained task here>
+  Context: ...
+  Constraints: ...
+  Definition of done: ...
+
+model: auto                        # auto | auto-genius | claude-4-7-opus-high | claude-4-6-sonnet-high | ...
+
+# --- cloud-only options (ignored for local `agent run`) ---
+# environment: <ENVIRONMENT_ID>    # oz environment list ; or set no_environment: true
+# host: warp                       # "warp" = Warp infra ; other = self-hosted worker name
+# agent: <AGENT_UID>               # run as a saved agent (its skills/model, credit attribution)
+# secrets: [SECRET_NAME]           # attach secrets uploaded via `oz secret`
+# skills: [repo:skill_name]        # attach skills
+# mcp: ./mcp.json                  # MCP servers to start before the run
+# open: false                      # true => surface the session in the Warp GUI

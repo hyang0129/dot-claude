@@ -1,0 +1,6 @@
+#!/bin/bash
+# ozj — Warp `oz` CLI with JSON output forced, for machine parsing by the orchestrator.
+# Pretty/interactive use: call `oz` (alias) directly.
+# Use the env var, not the --output-format flag: the flag before a subcommand makes
+# `oz` parse the subcommand as a URL positional.
+exec env WARP_OUTPUT_FORMAT=json /Applications/Warp.app/Contents/Resources/bin/oz "$@"

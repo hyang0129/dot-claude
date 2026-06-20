@@ -1,0 +1,66 @@
+#!/bin/bash
+# warp-spawn — spawn a VISIBLE Claude Code agent session as a new TAB in the active Warp
+# window. Opens a new tab at [cwd], then types `claude '<prompt>'` and runs it, launching an
+# interactive Claude Code session you can watch and take over.
+# See ~/.claude/warp-playbook/spawning-sessions.md.
+#
+# NOTE: this launches the **claude** CLI (Claude Code), NOT Warp's own agent. The new tab's
+# universal input classifies a leading `claude` token as a command and runs it.
+#
+# Requires:
+#   - Warp granted macOS Accessibility
+#     (System Settings > Privacy & Security > Accessibility > Warp = ON).
+#   - `claude` on PATH in the spawned shell.
+# Best run from within Warp — Claude lives in a Warp tab, so "active window" = this window.
+#
+# Usage: warp-spawn "<prompt>" [cwd]
+#   warp-spawn "set up this repo for dev" /Users/hong/code/llmatro
+#   warp-spawn "summarize the git log" /Users/hong/some/repo
+#
+# Env overrides:
+#   WARP_SPAWN_CMD=<cmd>     launcher to run (default: claude). e.g. WARP_SPAWN_CMD="claude --model opus"
+#   WARP_SPAWN_AGENT=warp    legacy: hand the raw prompt to Warp's own agent instead of claude.
+set -euo pipefail
+
+prompt="${1:?usage: warp-spawn \"<prompt>\" [cwd]}"
+cwd="${2:-$HOME}"
+launcher="${WARP_SPAWN_CMD:-claude}"
+
+# Build the text typed into the new tab.
+if [[ "${WARP_SPAWN_AGENT:-}" == "warp" ]]; then
+  # Legacy path: let Warp's interactive agent handle the raw prompt.
+  typed="$prompt"
+else
+  # Default: launch a Claude Code session with the prompt as its first message.
+  # Single-quote the prompt for the shell, escaping embedded single quotes as '\'' so any
+  # prompt content survives intact.
+  esc=${prompt//\'/\'\\\'\'}
+  typed="$launcher '$esc'"
+fi
+
+# 1) new tab in the ACTIVE window (the same window Claude runs in)
+open "warp://action/new_tab?path=${cwd}"
+
+# 2) let Warp create + focus the new tab BEFORE typing, so keystrokes can't leak into
+#    the Claude tab. Bump this if your machine is slow.
+sleep 1.6
+
+# 3) type the command into the focused new tab and submit (Return = key code 36).
+#    The text is passed as argv to avoid AppleScript string-quoting pitfalls.
+#    Single-line only (Return submits).
+osascript - "$typed" <<'APPLESCRIPT'
+on run argv
+  set theText to item 1 of argv
+  tell application "Warp" to activate
+  delay 0.4
+  tell application "System Events"
+    tell process "Warp"
+      keystroke theText
+      delay 0.5
+      key code 36
+    end tell
+  end tell
+end run
+APPLESCRIPT
+
+echo "warp-spawn: opened a tab in the active Warp window and ran: $typed"
