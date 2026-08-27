@@ -82,7 +82,7 @@ Check for refresh triggers **before handling any gap**. Refresh triggers:
 
 2. A gap this session involves a new debate that prior research didn't cover.
    → Invoke the research subagent per
-   `commands/refine-constitution/research-prompt.md` with the specific scoped query (the
+   `~/.claude/prompts/refine-constitution/research-prompt.md` with the specific scoped query (the
    new debate, not the whole design space).
 
 3. `CONSTITUTION.research.md` is missing.
@@ -155,7 +155,7 @@ If the anti-pattern is concrete: replace `[NEEDS ANTI-PATTERN]` with it.
 ### `[UNCHALLENGED]`
 
 Run the challenger subagents per
-`commands/refine-constitution/challenger-prompts.md` on this law only. Pass the law's
+`~/.claude/prompts/refine-constitution/challenger-prompts.md` on this law only. Pass the law's
 full text and the relevant section of `CONSTITUTION.research.md`.
 
 The three challenger angles are Necessity, Scope, and Rejected-Alternative. Run them
@@ -243,14 +243,14 @@ After all selected gaps are handled:
 ## Step 6 — Emit updated `CONSTITUTION.md` and mini
 
 Write the updated `CONSTITUTION.md` to disk, following the schema in
-`commands/refine-constitution/constitution-template.md`. Do not alter sections that were
+`~/.claude/prompts/refine-constitution/constitution-template.md`. Do not alter sections that were
 not touched this session.
 
 Then check completeness (zero markers, thesis present, 3–10 laws each with all four
 required elements, Rejected Alternatives and Review Heuristic sections present):
 
 - **If complete:** generate `CONSTITUTION.mini.md` per the mini schema in
-  `commands/refine-constitution/constitution-template.md`.
+  `~/.claude/prompts/refine-constitution/constitution-template.md`.
 - **If not complete:** skip mini generation. If an existing `CONSTITUTION.mini.md`
   is present from a prior run, delete it to prevent stale state.
 
@@ -272,8 +272,8 @@ separately: "Deferred this session: [Law N — reason]. CLAUDE.md candidates: [l
 - Do not admit a Why that fails bluffing detection. A weak law is worse than no law.
 - Do not fabricate a rejected alternative when the user cannot name one.
 - Do not close the session with more than 10 laws.
-- Reference `commands/refine-constitution/constitution-template.md` for the output schema.
-- Reference `commands/refine-constitution/research-prompt.md` if invoking the research
+- Reference `~/.claude/prompts/refine-constitution/constitution-template.md` for the output schema.
+- Reference `~/.claude/prompts/refine-constitution/research-prompt.md` if invoking the research
   subagent.
-- Reference `commands/refine-constitution/challenger-prompts.md` if running challenger
+- Reference `~/.claude/prompts/refine-constitution/challenger-prompts.md` if running challenger
   subagents.

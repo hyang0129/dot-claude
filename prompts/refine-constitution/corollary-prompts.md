@@ -6,7 +6,7 @@ between them, and an **Advocate** that stress-tests each surviving candidate by
 writing the strongest possible anti-corollary (or proves none exists). Run from
 **setup phase 6** (Phase 6b dispatches Judges; Phase 6c dispatches Advocates) and
 optionally during **amendment** when a new law-pair is created (see
-`commands/refine-constitution/amendment-prompt.md`).
+`~/.claude/prompts/refine-constitution/amendment-prompt.md`).
 
 ## Invocation
 
@@ -204,7 +204,7 @@ each, present all four fields together:
 ```
 
 Ask the user: accept, revise, or reject. On revise, the four-condition admission
-gate (per `commands/refine-constitution/constitution-template.md` Corollaries
+gate (per `~/.claude/prompts/refine-constitution/constitution-template.md` Corollaries
 section) must still hold — multi-law, concrete decision class, contested,
 net-new. If a revision breaks the gate, drop the candidate rather than patch
 around it.

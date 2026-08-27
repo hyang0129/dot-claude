@@ -1,4 +1,6 @@
 ---
+name: pr-finalize
+description: "Prepare a fix-issue PR branch for merge after /pr-review-cycle: rebase, verify intent preserved, confirm CI, force-push, update the PR. Terminates in READY or BLOCKER. Run only after /pr-review-cycle has completed."
 version: 1.0.0
 ---
 

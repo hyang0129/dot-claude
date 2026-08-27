@@ -1,4 +1,6 @@
 ---
+name: refine-doctrine
+description: "Create, refine, or amend a project DOCTRINE.md — tech-bound Standing Orders that anchor to a constitutional law and retire when their tech assumption changes. Requires a complete CONSTITUTION.md to run."
 version: 1.0.0
 ---
 
@@ -36,7 +38,7 @@ Flags take precedence over all detection logic. When a `--force-*` flag is prese
 This command produces or updates:
 
 - `DOCTRINE.md` — the doctrine file, at `path` (default: repo root).
-- `DOCTRINE.mini.md` — derived agent-injection target; written only when the master is complete (zero markers). See the mini schema in `commands/refine-doctrine/doctrine-template.md`.
+- `DOCTRINE.mini.md` — derived agent-injection target; written only when the master is complete (zero markers). See the mini schema in `~/.claude/prompts/refine-doctrine/doctrine-template.md`.
 
 It never writes source files, never creates branches, never opens PRs, and never edits `CONSTITUTION.md` directly (promote-to-law creates a tombstone and tells the user to run `/refine-constitution --force-amendment`).
 
@@ -252,9 +254,9 @@ Read the matching subskill prompt file and follow its instructions. Do not summa
 
 | MODE | Subskill file |
 |------|--------------|
-| setup | `commands/refine-doctrine/setup-prompt.md` |
-| refinement | `commands/refine-doctrine/refinement-prompt.md` |
-| amendment | `commands/refine-doctrine/amendment-prompt.md` |
+| setup | `~/.claude/prompts/refine-doctrine/setup-prompt.md` |
+| refinement | `~/.claude/prompts/refine-doctrine/refinement-prompt.md` |
+| amendment | `~/.claude/prompts/refine-doctrine/amendment-prompt.md` |
 
 Pass the following context into the subskill:
 

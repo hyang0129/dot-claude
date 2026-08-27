@@ -1,4 +1,6 @@
 ---
+name: resolve-epic
+description: "Orchestrate end-to-end resolution of a GitHub epic whose child issues already exist: create an epic branch, resolve each child in sequence against it, and open one epic PR. Does not decompose epics — run /refine-epic first."
 version: 1.0.0
 ---
 

@@ -1,4 +1,6 @@
 ---
+name: refine-epic
+description: "Interview the author to capture and lock the intent behind an epic — feared failure mode, resolved tradeoffs, hard invariants, rejected alternatives — then decompose it into independently shippable child issues. Pass --org for multi-team mode."
 version: 1.0.0
 ---
 
@@ -61,7 +63,7 @@ Optional flags:
 
 Default: **solo** — assumes single-author ownership. This skill is written for solo mode.
 
-*Org mode (`--org`): see [refine-epic-org.md](refine-epic-org.md).* It defines deltas applied
+*Org mode (`--org`): see `~/.claude/prompts/refine-epic/org-mode-overlay.md`.* It defines deltas applied
 over solo mode: stakeholder matrix, borrowed-invariant confirmation gate, sign-off table,
 additional required questions. Read that file only when `--org` is set.
 
@@ -299,7 +301,7 @@ Scan subagent returns two working artifacts (not files yet — surfaced inline d
    at least one child issue if wrong." Format: `[INFER] <claim>. Confirm or correct.`
 2. **Coupling summary + external borrowed invariants.**
 
-*Org mode:* see [refine-epic-org.md](refine-epic-org.md) for CODEOWNERS lookup and stakeholder
+*Org mode:* see `~/.claude/prompts/refine-epic/org-mode-overlay.md` for CODEOWNERS lookup and stakeholder
 matrix additions.
 
 ---
@@ -319,7 +321,7 @@ Output per tier:
 - **Standard** — full `intent.md` + extractive compression + GitHub publishing.
 - **Heavy** — Standard + required ADR links for ONE-WAY-DOOR priors.
 
-*Org mode:* see [refine-epic-org.md](refine-epic-org.md) for adjacent-team thresholds and
+*Org mode:* see `~/.claude/prompts/refine-epic/org-mode-overlay.md` for adjacent-team thresholds and
 Heavy-tier confirmation gate.
 
 Present:
@@ -369,7 +371,7 @@ Dropped in solo mode: Q-commitment and shape are covered by the Challenger pass 
 Q-kill and Q-portfolio are assumed (invoking `/refine-epic` signals intent to build now;
 abandonment needs no formal criterion when you're the whole team); Q-stakeholders is org-only.
 
-*Org mode:* see [refine-epic-org.md](refine-epic-org.md) for the full question set.
+*Org mode:* see `~/.claude/prompts/refine-epic/org-mode-overlay.md` for the full question set.
 
 **Lite tier:** premortem + Q-success only. Skip the rest.
 
@@ -409,7 +411,7 @@ Spawn three Challenger subagents **in parallel** in a single response
 on each other's arguments. In solo mode, where no team exists to push back, this is the only
 external voice in the room.
 
-Prompts live in [refine-epic/challenger-prompts.md](refine-epic/challenger-prompts.md). Read
+Prompts live in `~/.claude/prompts/refine-epic/challenger-prompts.md`. Read
 that file once, then pass each Challenger's prompt inline alongside the identical inputs:
 
 - Sub-phase 1 scan outputs (inferences list, coupling summary, borrowed invariants).
@@ -444,7 +446,7 @@ Resolve before the intent document can be written.
 
 **Produce intent artifact**
 
-Schemas live in [refine-epic/intent-templates.md](refine-epic/intent-templates.md). Read that
+Schemas live in `~/.claude/prompts/refine-epic/intent-templates.md`. Read that
 file only when you reach this point.
 
 ROOT assembles the full `intent.md` text **in-memory** from the Q&A transcript and Challenger
@@ -469,7 +471,7 @@ Clarify this and I'll post the document and start decomposition.
 
 **Publish via Publisher subagent**
 
-Load the Publisher prompt from [refine-epic/publisher-prompt.md](refine-epic/publisher-prompt.md)
+Load the Publisher prompt from `~/.claude/prompts/refine-epic/publisher-prompt.md`
 and spawn it (`model: "claude-sonnet-4-6"`). Pass inline:
 
 - The full contents of publisher-prompt.md
@@ -538,7 +540,7 @@ Output (in-memory only): workstream list with `(name, concern, candidate_slices[
 
 ### Phase B — Parallel Sonnet Researchers
 
-Load the Researcher prompt from [refine-epic/researcher-prompt.md](refine-epic/researcher-prompt.md)
+Load the Researcher prompt from `~/.claude/prompts/refine-epic/researcher-prompt.md`
 once. Then, **in a single response**, emit one `Agent` tool call per workstream
 (`model: "claude-sonnet-4-6"`). All Researchers run concurrently.
 
@@ -673,7 +675,7 @@ and do not create a draft file for that child.
 <Child issues that already exist at the time of refinement. Do not re-propose these.>
 ```
 
-*Org mode:* append Sign-Off Gate table — see [refine-epic-org.md](refine-epic-org.md).
+*Org mode:* append Sign-Off Gate table — see `~/.claude/prompts/refine-epic/org-mode-overlay.md`.
 
 ### C2. Per-slice child draft schema — `EPIC_DIR/child-<N>-<slug>.md`
 
@@ -796,7 +798,7 @@ The premise: Step 2 captured enough author reasoning that a Surrogate seeded fro
 `intent-compressed.md` can answer all questions `/refine-issue`'s Intent agent would ask —
 without escalating to the real user.
 
-Load the Surrogate prompt from [refine-epic/surrogate-prompt.md](refine-epic/surrogate-prompt.md)
+Load the Surrogate prompt from `~/.claude/prompts/refine-epic/surrogate-prompt.md`
 once, then reuse for every Surrogate spawn.
 
 ### Per-child: one `Agent` call per child
@@ -864,7 +866,7 @@ Ready for /resolve-issue per child, in dependency order.
 ```
 
 Spawn the Publisher in **summary mode** (`model: "claude-sonnet-4-6"`). Pass the prompt from
-[refine-epic/publisher-prompt.md](refine-epic/publisher-prompt.md) plus:
+`~/.claude/prompts/refine-epic/publisher-prompt.md` plus:
 - `REPO`
 - `EPIC_NUMBER`
 - `SUMMARY_MD_CONTENT` — the assembled summary above
@@ -894,7 +896,7 @@ Action: Add the child row to the decomposition table with Behavioral Question =
 `NEEDS HUMAN INPUT` and Effort = `?`. Do not create a draft file. Continue drafting other
 children where the question is answerable.
 
-*Org mode:* Gate 3 (Sign-Off Gate) — see [refine-epic-org.md](refine-epic-org.md).
+*Org mode:* Gate 3 (Sign-Off Gate) — see `~/.claude/prompts/refine-epic/org-mode-overlay.md`.
 
 ---
 

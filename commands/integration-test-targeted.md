@@ -1,4 +1,6 @@
 ---
+name: integration-test-targeted
+description: "Integration tests from a pre-supplied Bug Review scope file instead of from acceptance criteria. Use ONLY when a Fix Planner has already named the scenarios (Class B path of /resolve-issue); no --update-golden support."
 version: 1.0.0
 ---
 
@@ -86,7 +88,7 @@ After Step 1: mark Step 1 done, Step 2 `in_progress`.
 
 Replaces `/integration-test` Step 2 (Feature Scope Agent).
 
-*Delegated to:* **Scenario Resolver** subagent. Single Sonnet call. Prompt lives in [integration-test/scenario-resolver-prompt.md](integration-test/scenario-resolver-prompt.md).
+*Delegated to:* **Scenario Resolver** subagent. Single Sonnet call. Prompt lives in `~/.claude/prompts/integration-test/scenario-resolver-prompt.md`.
 
 ### Inputs to the subagent
 
@@ -102,7 +104,7 @@ Agent({
   description: "Scenario Resolver",
   subagent_type: "general-purpose",
   model: "sonnet",
-  prompt: <full contents of integration-test/scenario-resolver-prompt.md, with input section substituted>
+  prompt: <full contents of ~/.claude/prompts/integration-test/scenario-resolver-prompt.md, with input section substituted>
 })
 ```
 

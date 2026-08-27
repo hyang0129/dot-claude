@@ -1,12 +1,34 @@
 # Global Claude Code Instructions
 
+## Storage Policy on `homen`
+
+The root filesystem (`/`) is approximately 100 GB and is reserved for the
+operating system, packages, system services, logs, and small per-user
+configuration files.
+
+- Put all repositories, worktrees, virtual environments, build outputs,
+  datasets, media, models, caches, and generated artifacts under `/work/hong`.
+- Use `/work/hong/<repo>` for code and `/work/hong/media/` for large media.
+- Do not copy working data into `/home/hong` and do not create compatibility
+  symlinks there unless the user explicitly requests one.
+- Before a large clone, copy, download, build, or generation job, verify the
+  destination with `df -P <path>`. Working data must resolve to
+  `/dev/mapper/ubuntu--vg-work`, mounted at `/work`.
+- If a tool defaults to a large cache or artifact directory under `$HOME`,
+  configure that data to live under `/work/hong` instead.
+
+Use canonical `/work/hong/...` paths in commands and documentation.
+
 ## Starting Work in a Repo
 
 At the start of any task in a repository, read the repo's `CLAUDE.md` (if it exists) before doing anything else. This file contains project-specific instructions, conventions, and constraints that override defaults. Use `Glob` to check for `CLAUDE.md` at the repo root.
 
 ## Modifying Global Config
 
-This file and all files under `~/.claude/commands/` and `~/.claude/guides/` are **copied** from the `dot-claude` repo. Do NOT edit them in `~/.claude/` directly. Instead, make changes in the repo at `~/Code Projects/dot-claude/` so they are version-controlled. After making changes, manually copy the updated files into `~/.claude/` (no install script — just copy).
+`~/.claude/CLAUDE.md`, `commands/`, `guides/`, `hooks/`, `skills/`, `prompts/` and
+`templates/` are **symlinks** into the `dot-claude` repo at `~/dot-claude/`. Editing either
+path edits the same file, and `git pull` updates live config immediately — there is nothing
+to copy. Make changes in `~/dot-claude/` so they are version-controlled, then commit.
 
 ## Dev Containers
 

@@ -1,4 +1,6 @@
 ---
+name: refine-issue
+description: "Interview the user to capture and lock the intent behind an issue — the real outcome wanted, unstated assumptions, intolerable failure modes — so an implementation agent never has to re-ask. Pass --obvious to answer via a surrogate when the body is already detailed."
 version: 1.0.0
 ---
 
@@ -287,7 +289,7 @@ Resume the interview from the saved Q&A (r) or start over (s)?
 
 ### Step 2a — Surrogate flow (`--obvious` only)
 
-Spawn the user-surrogate subagent (`commands/refine-issue/surrogate-prompt.md`,
+Spawn the user-surrogate subagent (`~/.claude/prompts/refine-issue/surrogate-prompt.md`,
 `model: "claude-sonnet-4-6"`). Pass it:
 
 - The full issue body and comments (or the free-form description, in free-form mode).

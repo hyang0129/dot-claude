@@ -1,4 +1,6 @@
 ---
+name: paranoid
+description: "Shift into paranoid coding posture for the rest of the session: treat every input as malicious, validate at every trust boundary, fail closed. Use before writing code that parses untrusted data, handles auth, or crosses a security boundary."
 version: 1.0.0
 ---
 

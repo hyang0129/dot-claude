@@ -1,4 +1,6 @@
 ---
+name: setup-agent-index
+description: "Build docs/agent_index.md and docs/modules/ for an existing undocumented codebase, so future Planner agents can discover what already exists before planning new work. One-time setup per repo."
 version: 1.0.0
 ---
 

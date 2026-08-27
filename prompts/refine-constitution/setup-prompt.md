@@ -156,7 +156,7 @@ Tell the user: "Thesis saved to `CONSTITUTION.wip.md` — progress is now recove
 
 Run sequentially. Wait for the subagent to return before continuing.
 
-**Invoke:** follow `commands/refine-constitution/research-prompt.md` as the
+**Invoke:** follow `~/.claude/prompts/refine-constitution/research-prompt.md` as the
 subagent brief.
 
 **Inputs to pass:**
@@ -279,7 +279,7 @@ opposite-stance project passed the load-bearing test for each surviving debate.
 
 ## Phase 4 — Challenger pass
 
-Invoke the three challenger subagents per `commands/refine-constitution/challenger-prompts.md`.
+Invoke the three challenger subagents per `~/.claude/prompts/refine-constitution/challenger-prompts.md`.
 
 ### Inputs to each challenger
 
@@ -431,7 +431,7 @@ practice.
 
 After completing each law (admitted or deferred), **immediately write the current
 state of all drafted laws to `CONSTITUTION.md`**. Use the schema from
-`commands/refine-constitution/constitution-template.md` but leave sections not yet
+`~/.claude/prompts/refine-constitution/constitution-template.md` but leave sections not yet
 reached (Rejected Alternatives, Corollaries, Review Heuristic) as `[MISSING]`
 placeholders. This means `CONSTITUTION.md` is a valid-but-incomplete draft after
 every law, and the refinement subskill can resume from it if the session ends.
@@ -460,7 +460,7 @@ fail-closed: if no concrete contested decision exists, no corollary is written.
 An empty Corollaries section beats a section full of paraphrases.
 
 Phase 6 is a four-stage flow. The schema for each accepted corollary is defined
-in `commands/refine-constitution/constitution-template.md` (Corollaries section,
+in `~/.claude/prompts/refine-constitution/constitution-template.md` (Corollaries section,
 including the four-condition admission gate).
 
 ### Phase 6a — Enumerate law pairs (script, no LLM)
@@ -492,7 +492,7 @@ pair anchoring bias a single agent walking all pairs would suffer ("pair 7 is
 like pair 3, both DISCARD"). It also keeps the round-trip count to one regardless
 of pair count.
 
-Follow `commands/refine-constitution/corollary-prompts.md § Pair Judge` as the
+Follow `~/.claude/prompts/refine-constitution/corollary-prompts.md § Pair Judge` as the
 subagent brief. Each Judge receives:
 
 - The thesis.
@@ -517,7 +517,7 @@ For each CANDIDATE from 6b, spawn one Advocate subagent **in parallel from a
 single ROOT turn** (same parallel-spawn rule as 6b — prevents Advocates from
 anchoring on each other and bounds the round-trips to one).
 
-Follow `commands/refine-constitution/corollary-prompts.md § Advocate` as the
+Follow `~/.claude/prompts/refine-constitution/corollary-prompts.md § Advocate` as the
 subagent brief. Each Advocate receives:
 
 - The thesis.
@@ -630,7 +630,7 @@ Write three things (or four — see below):
 By this point `CONSTITUTION.md` has been written and updated at every phase checkpoint
 since Phase 5. Phase 9 writes the final version — all sections complete, laws in
 precedence order, markers present where required. Follow the schema in
-`commands/refine-constitution/constitution-template.md`.
+`~/.claude/prompts/refine-constitution/constitution-template.md`.
 
 After writing, delete `CONSTITUTION.wip.md` — the session is no longer interrupted.
 
@@ -640,7 +640,7 @@ After writing `CONSTITUTION.md`, check whether it is complete (zero markers, all
 required sections present, 3–10 laws each with all four required elements).
 
 - **If complete:** generate `CONSTITUTION.mini.md` per the mini schema in
-  `commands/refine-constitution/constitution-template.md`. This is the agent
+  `~/.claude/prompts/refine-constitution/constitution-template.md`. This is the agent
   injection target — keep it under ~400 words.
 - **If not complete (markers remain):** skip mini generation. Do not write or
   update `CONSTITUTION.mini.md`. If an existing mini file is present from a prior

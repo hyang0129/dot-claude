@@ -11,7 +11,7 @@ Reusable Claude Code configuration â€” skills, guides, settings, and templates â
 | `commands/` | Custom slash commands (`/fix-issue`, `/review-fix`, `/rebase`) |
 | `guides/` | Reference docs read on-demand by commands and CLAUDE.md |
 | `hooks/` | Event-driven shell scripts (pre/post tool execution) |
-| `mcp/` | MCP server configurations |
+| `prompts/` | Subagent prompt bodies loaded by commands (not user-invocable) |
 | `templates/` | Scaffolding: devcontainer skeleton, starter project CLAUDE.md |
 
 ## Install
@@ -25,14 +25,18 @@ cd dot-claude
 ./install.sh
 ```
 
-**Windows (cmd.exe):**
+**Windows (cmd.exe):** symlinks are unreliable under Docker Desktop / WSL, so use the copy-based
+fallback:
 ```batch
 git clone https://github.com/YOUR_USER/dot-claude.git
 cd dot-claude
-install.cmd
+fix-install.cmd
 ```
 
-The install script symlinks tracked files into `~/.claude` and backs up any existing files. Runtime directories (sessions, projects, telemetry) are left untouched.
+`install.sh` symlinks tracked config into `~/.claude`, plus `AGENTS.md` into `~/.codex` so Codex and
+Claude Code share one storage/workflow policy. It is idempotent and backs up any existing real file
+to `<name>.bak`. `settings.json` is copied, not linked, and never overwritten once it exists.
+Runtime directories (sessions, projects, telemetry) are left untouched.
 
 ## Not tracked
 

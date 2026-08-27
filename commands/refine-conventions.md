@@ -1,4 +1,6 @@
 ---
+name: refine-conventions
+description: "Create, refine, or amend a project CONVENTIONS.md — the how-we-build-it defaults (library picks, file layout, taste calls) sitting under the constitution. Requires a complete CONSTITUTION.md to run."
 version: 1.0.0
 ---
 
@@ -36,7 +38,7 @@ Flags take precedence over all detection logic. When a `--force-*` flag is prese
 This command produces or updates:
 
 - `CONVENTIONS.md` — the conventions file, at `path` (default: repo root).
-- `CONVENTIONS.mini.md` — derived agent-injection target; written only when the master is complete (zero `[TBD]` markers). See the mini schema in `commands/refine-conventions/conventions-template.md`.
+- `CONVENTIONS.mini.md` — derived agent-injection target; written only when the master is complete (zero `[TBD]` markers). See the mini schema in `~/.claude/prompts/refine-conventions/conventions-template.md`.
 - `CONVENTIONS.research.md` — optional research cache, written by the research subskill when invoked. Not part of the completeness check.
 
 It never writes source files, never creates branches, never opens PRs, and never edits `CONSTITUTION.md`.
@@ -231,9 +233,9 @@ Read the matching subskill prompt file and follow its instructions. Do not summa
 
 | MODE | Subskill file |
 |------|--------------|
-| setup | `commands/refine-conventions/setup-prompt.md` |
-| refinement | `commands/refine-conventions/refinement-prompt.md` |
-| amendment | `commands/refine-conventions/amendment-prompt.md` |
+| setup | `~/.claude/prompts/refine-conventions/setup-prompt.md` |
+| refinement | `~/.claude/prompts/refine-conventions/refinement-prompt.md` |
+| amendment | `~/.claude/prompts/refine-conventions/amendment-prompt.md` |
 
 Pass the following context into the subskill:
 

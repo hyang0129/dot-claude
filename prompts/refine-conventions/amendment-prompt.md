@@ -34,11 +34,11 @@ Ask which area. If the area doesn't exist, treat as "add a whole new area" (next
 
 For the new convention, ask the user for the rule line first — they initiated the change, they have the rule in mind. Optionally ask for `How`, `Notes`, or `Revisit when` — but only if the user wants them. Do not pad with empty fields.
 
-If the user is uncertain on the rule and asks for suggestions, optionally invoke the research subskill (`commands/refine-conventions/research-prompt.md`) to surface best practices for the area. Same rules as setup Phase 2 — invoke when it adds signal, skip when the user already has a preference.
+If the user is uncertain on the rule and asks for suggestions, optionally invoke the research subskill (`~/.claude/prompts/refine-conventions/research-prompt.md`) to surface best practices for the area. Same rules as setup Phase 2 — invoke when it adds signal, skip when the user already has a preference.
 
 ### Add a whole new area
 
-Place per the canonical ordering from `commands/refine-conventions/conventions-template.md`. Project-specific areas not on the canonical list go at the end.
+Place per the canonical ordering from `~/.claude/prompts/refine-conventions/conventions-template.md`. Project-specific areas not on the canonical list go at the end.
 
 Walk the new area as a Phase 2 area in setup, running the full per-area procedure (Steps A–D): ask the user what they have in mind for the area first, then decide on research, then propose to fill gaps, then accept / edit / cut / add.
 

@@ -1,4 +1,6 @@
 ---
+name: fix-issue
+description: "Implement a GitHub issue end-to-end: auto-detect tier, plan, optionally draft an ADR, code, test, and open a PR. Accepts --tier, --require-adr, --worktree, --base. The core implementation command; /resolve-issue wraps it with review and QA phases."
 version: 1.0.0
 ---
 

@@ -1,4 +1,6 @@
 ---
+name: integration-test
+description: "Write durable integration tests covering full vertical slices against real infrastructure — real database, real HTTP, real queues. Derives scenarios from the implementation plan's acceptance criteria. Supports --update-golden."
 version: 1.0.0
 ---
 
@@ -189,7 +191,7 @@ After Step 1: mark Step 1 done, Step 2 `in_progress`.
 
 ## Step 2 — Feature Scope Agent (subagent, single invocation)
 
-*Delegated to:* **Feature Scope Agent** subagent. Single Sonnet call. Prompt lives in [integration-test/feature-scope-prompt.md](integration-test/feature-scope-prompt.md).
+*Delegated to:* **Feature Scope Agent** subagent. Single Sonnet call. Prompt lives in `~/.claude/prompts/integration-test/feature-scope-prompt.md`.
 
 Unlike component-test's Boundary Mapper (which produces a verifiable structural map from the module call graph), the Feature Scope Agent produces a **semantic map** from acceptance criteria and user-visible behaviors. Because semantic reasoning is less reliable than structural traversal, its outputs require cross-validation against the actual diff before being passed to writers (Step 2b).
 
@@ -209,7 +211,7 @@ Agent({
   description: "Feature Scope Agent",
   subagent_type: "general-purpose",
   model: "sonnet",
-  prompt: <full contents of integration-test/feature-scope-prompt.md, with input section substituted>
+  prompt: <full contents of ~/.claude/prompts/integration-test/feature-scope-prompt.md, with input section substituted>
 })
 ```
 
@@ -273,7 +275,7 @@ After Step 3: mark Step 3 done, Step 4 `in_progress`.
 
 ## Step 4 — Test Writers (subagents, parallel, one per scenario)
 
-*Delegated to:* **Integration Test Writer** subagents. Prompt lives in [integration-test/test-writer-prompt.md](integration-test/test-writer-prompt.md).
+*Delegated to:* **Integration Test Writer** subagents. Prompt lives in `~/.claude/prompts/integration-test/test-writer-prompt.md`.
 
 ### Concurrency
 
@@ -441,7 +443,7 @@ If `INFRA_NOT_AVAILABLE=true` (from Step 3 env check or this step's timeout/conn
 
 If the smoke run has any failures NOT classified as infra:
 
-1. Spawn a **Test Fixer** subagent (prompt: [integration-test/test-fixer-prompt.md](integration-test/test-fixer-prompt.md)).
+1. Spawn a **Test Fixer** subagent (prompt: `~/.claude/prompts/integration-test/test-fixer-prompt.md`).
 2. Pass it: the runner failure output, all wiring test file paths, the FRAMEWORK record, GIT_ROOT, and the `NEEDS_FIX` list (scenario IDs flagged from `TIER_INCOMPLETE_WIRING` checks in Step 4).
 3. Fixer classifies failures, attempts mechanical fixes (cap 2 per file), and returns a record at `$WORK_DIR/fixer-record.json`.
 4. Re-run the wiring smoke. Collect remaining failures into NON_SIMPLE_BUGS using the fixer's diagnoses.

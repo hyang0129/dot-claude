@@ -1,4 +1,6 @@
 ---
+name: e2e-qa
+description: "Playwright-first automated QA on a feature PR or pre-scoped issue. Orchestrator only — sequences QA subagents, logs residual human-QA debt as a GitHub issue, and gates merge on risk tier. Never writes code itself."
 version: 2.0.0
 ---
 

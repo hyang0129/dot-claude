@@ -1,4 +1,6 @@
 ---
+name: assess-complexity
+description: "Assess the tier (1/2/3) and ADR requirement for a GitHub issue. Shared utility called by /fix-issue and /resolve-issue Step 0 so the assessment runs exactly once per entry point; rarely invoked directly."
 version: 1.0.0
 ---
 

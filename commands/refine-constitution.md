@@ -1,4 +1,6 @@
 ---
+name: refine-constitution
+description: "Create, refine, or amend a project CONSTITUTION.md — the contested, load-bearing laws of a codebase. Detects current state and dispatches to the matching subskill. Writes no source code and opens no PRs."
 version: 1.0.0
 ---
 
@@ -35,7 +37,7 @@ Flags take precedence over all detection logic. When a `--force-*` flag is prese
 This command produces or updates:
 
 - `CONSTITUTION.md` — the constitution file, at `path` (default: repo root).
-- `CONSTITUTION.mini.md` — derived agent-injection target; written only when the master is complete (zero markers). See the mini schema in `commands/refine-constitution/constitution-template.md`.
+- `CONSTITUTION.mini.md` — derived agent-injection target; written only when the master is complete (zero markers). See the mini schema in `~/.claude/prompts/refine-constitution/constitution-template.md`.
 - `CONSTITUTION.research.md` — research cache written by the research subagent; present only when a subskill invokes it.
 
 It never writes source files, never creates branches, and never opens PRs.
@@ -178,9 +180,9 @@ Read the matching subskill prompt file and follow its instructions. Do not summa
 
 | MODE | Subskill file |
 |------|--------------|
-| setup | `commands/refine-constitution/setup-prompt.md` |
-| refinement | `commands/refine-constitution/refinement-prompt.md` |
-| amendment | `commands/refine-constitution/amendment-prompt.md` |
+| setup | `~/.claude/prompts/refine-constitution/setup-prompt.md` |
+| refinement | `~/.claude/prompts/refine-constitution/refinement-prompt.md` |
+| amendment | `~/.claude/prompts/refine-constitution/amendment-prompt.md` |
 
 Pass the following context into the subskill:
 

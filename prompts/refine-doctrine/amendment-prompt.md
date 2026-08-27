@@ -11,9 +11,9 @@ Detector are optional), and every Anchor references a valid law in `CONSTITUTION
 The user wants to *change* something about a working doctrine, not fill a gap.
 
 Reference files:
-- Marker grammar and completeness rule: `commands/refine-doctrine/doctrine-template.md`
-- Contestedness filter and order anatomy: `commands/refine-doctrine/doctrine-template.md`
-- Challenger subagents: `commands/refine-doctrine/challenger-prompts.md`
+- Marker grammar and completeness rule: `~/.claude/prompts/refine-doctrine/doctrine-template.md`
+- Contestedness filter and order anatomy: `~/.claude/prompts/refine-doctrine/doctrine-template.md`
+- Challenger subagents: `~/.claude/prompts/refine-doctrine/challenger-prompts.md`
 
 ---
 
@@ -65,7 +65,7 @@ this one pressure point.
    instead. Do not admit a convention as an order.
 
 4. **Run all three challenger subagents** per
-   `commands/refine-doctrine/challenger-prompts.md` on this one candidate. Spawn
+   `~/.claude/prompts/refine-doctrine/challenger-prompts.md` on this one candidate. Spawn
    in parallel. Present all three outputs to the user. Capture rebuttals. Concessions
    revise the candidate before drafting.
 
@@ -286,7 +286,7 @@ Then check completeness (zero markers, Preamble present, ≥1 order with all fou
 required fields, all anchors valid against `CONSTITUTION_LAWS`):
 
 - **If still complete:** regenerate `DOCTRINE.mini.md` per the mini schema in
-  `commands/refine-doctrine/doctrine-template.md`. The amendment may have changed
+  `~/.claude/prompts/refine-doctrine/doctrine-template.md`. The amendment may have changed
   rules or anti-patterns, so always regenerate — never leave a stale mini.
 - **If regressed (markers present):** delete `DOCTRINE.mini.md` if it exists.
   A stale mini is worse than no mini.

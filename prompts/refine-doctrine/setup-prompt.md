@@ -234,7 +234,7 @@ counter-scenario for each surviving pressure.
 
 ## Phase 3 — Challenger pass
 
-Invoke the three challenger subagents per `commands/refine-doctrine/challenger-prompts.md`.
+Invoke the three challenger subagents per `~/.claude/prompts/refine-doctrine/challenger-prompts.md`.
 
 ### Inputs to each challenger
 
@@ -391,7 +391,7 @@ list. Surface both at Phase 6.
 
 After completing each order (admitted or deferred), **immediately write the current
 state of all drafted orders to `DOCTRINE.md`**. Use the schema from
-`commands/refine-doctrine/doctrine-template.md` but leave sections not yet reached
+`~/.claude/prompts/refine-doctrine/doctrine-template.md` but leave sections not yet reached
 (Retired Orders, Promoted-to-Law Log) empty. This means `DOCTRINE.md` is a valid-but-
 incomplete draft after every order, and the refinement subskill can resume from it if
 the session ends.
@@ -432,7 +432,7 @@ Write three things:
 
 ### 1. `DOCTRINE.md`
 
-Follow the schema in `commands/refine-doctrine/doctrine-template.md`. Write the
+Follow the schema in `~/.claude/prompts/refine-doctrine/doctrine-template.md`. Write the
 Preamble, Standing Orders, and empty Retired Orders and Promoted-to-Law Log sections.
 After writing, delete `DOCTRINE.wip.md` — the session is no longer interrupted.
 
@@ -442,7 +442,7 @@ After writing `DOCTRINE.md`, check whether it is complete (zero markers, Preambl
 present, ≥1 order each with all four required fields).
 
 - **If complete:** generate `DOCTRINE.mini.md` per the mini schema in
-  `commands/refine-doctrine/doctrine-template.md`.
+  `~/.claude/prompts/refine-doctrine/doctrine-template.md`.
 - **If not complete (markers remain):** skip mini generation. Do not write or update
   `DOCTRINE.mini.md`. If an existing mini file is present from a prior run, delete it
   to prevent stale state.

@@ -1,4 +1,6 @@
 ---
+name: resolve-issue
+description: "Orchestrate full resolution of a GitHub issue: /fix-issue, impact assessment, component/integration/E2E test branches, a Bug Review repair loop, /pr-review-cycle, and /pr-finalize — each in a fresh subagent context. The top-level entry point for autonomous issue work."
 version: 3.0.0
 ---
 

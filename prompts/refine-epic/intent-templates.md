@@ -83,7 +83,7 @@ a single **Dominant Priority** sentence naming the prior that outweighs the othe
 with blast-radius-if-violated.
 Org mode: stakeholder matrix from Sub-phase 1, plus Q-stakeholders answers; each borrowed
 invariant lists owner, disposition (Confirmed / Tagged / Assumed-unverified), blast radius.
-See refine-epic-org.md for org-mode details.>
+See `~/.claude/prompts/refine-epic/org-mode-overlay.md` for org-mode details.>
 
 ## 5. Architectural Commitment & Reversibility
 <From Q-commitment (org mode) or inferred from Decision Priors (solo mode). Distinguish

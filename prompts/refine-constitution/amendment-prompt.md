@@ -11,11 +11,11 @@ Detector are optional), Rejected Alternatives and Review Heuristic sections pres
 wants to *change* something about a working constitution, not fill a gap.
 
 Reference files:
-- Marker grammar and completeness rule: `commands/refine-constitution/constitution-template.md`
+- Marker grammar and completeness rule: `~/.claude/prompts/refine-constitution/constitution-template.md`
 - Bluffing detection, load-bearing test, anatomy of a law: `guides/constitution-guide.md`
-- Research subagent: `commands/refine-constitution/research-prompt.md`
-- Challenger subagents: `commands/refine-constitution/challenger-prompts.md`
-- Corollary subagents (Pair Judge + Advocate): `commands/refine-constitution/corollary-prompts.md`
+- Research subagent: `~/.claude/prompts/refine-constitution/research-prompt.md`
+- Challenger subagents: `~/.claude/prompts/refine-constitution/challenger-prompts.md`
+- Corollary subagents (Pair Judge + Advocate): `~/.claude/prompts/refine-constitution/corollary-prompts.md`
 
 ---
 
@@ -68,7 +68,7 @@ A new debate has surfaced. Run a scoped version of the setup flow for this one d
 
 3. **Refresh research if needed.** If the new debate is not covered by
    `CONSTITUTION.research.md` (or if the research file is absent), invoke the
-   research subagent per `commands/refine-constitution/research-prompt.md` with a
+   research subagent per `~/.claude/prompts/refine-constitution/research-prompt.md` with a
    scoped query targeting this debate. Otherwise reuse the cache.
 
 4. **Run the opposite-stance test.** Is the opposite stance defensible for a real
@@ -77,7 +77,7 @@ A new debate has surfaced. Run a scoped version of the setup flow for this one d
    a convention as a law.
 
 5. **Run all three Challenger subagents** per
-   `commands/refine-constitution/challenger-prompts.md` on this one debate. Spawn
+   `~/.claude/prompts/refine-constitution/challenger-prompts.md` on this one debate. Spawn
    in parallel. Present all three outputs to the user. Capture rebuttals. Concessions
    revise the candidate before drafting.
 
@@ -105,7 +105,7 @@ A new debate has surfaced. Run a scoped version of the setup flow for this one d
 8. **Walk new law-pairs for corollaries.** If the new law was admitted complete
    (no markers), it creates `count(existing_admitted_laws)` new pairs — Law N-new
    paired with every existing admitted law. Re-run Phase 6a/6b/6c from
-   `commands/refine-constitution/setup-prompt.md` against just those new pairs:
+   `~/.claude/prompts/refine-constitution/setup-prompt.md` against just those new pairs:
 
    - Phase 6a: enumerate new pairs only (existing pairs were walked at setup time
      and their corollary state is unchanged by this amendment).
@@ -113,7 +113,7 @@ A new debate has surfaced. Run a scoped version of the setup flow for this one d
    - Phase 6c: spawn one Advocate per CANDIDATE survivor, in parallel.
    - Phase 6d: walk surviving candidates with the user, applying the four-condition
      admission gate per the Corollaries section of
-     `commands/refine-constitution/constitution-template.md`.
+     `~/.claude/prompts/refine-constitution/constitution-template.md`.
 
    Skip this step if the new law was admitted with markers — corollary derivation
    is brittle when the source law's stance is incomplete. The next refinement
@@ -351,7 +351,7 @@ Then check completeness (zero markers, thesis present, 3–10 laws each with all
 required elements, Rejected Alternatives and Review Heuristic sections present):
 
 - **If still complete:** regenerate `CONSTITUTION.mini.md` per the mini schema in
-  `commands/refine-constitution/constitution-template.md`. The amendment may have
+  `~/.claude/prompts/refine-constitution/constitution-template.md`. The amendment may have
   changed stances or anti-patterns, so always regenerate — never leave a stale mini.
 - **If regressed (markers present):** delete `CONSTITUTION.mini.md` if it exists.
   A stale mini is worse than no mini.

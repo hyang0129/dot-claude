@@ -80,7 +80,7 @@ Walk each candidate. Confirmed candidates carry into Phase 2 as pre-seeded conve
 
 ### Step 4 — Build the area list
 
-Based on the confirmed stack, propose the list of areas to draft. Use the canonical ordering from `commands/refine-conventions/conventions-template.md`. Skip areas that don't apply to this project — for example:
+Based on the confirmed stack, propose the list of areas to draft. Use the canonical ordering from `~/.claude/prompts/refine-conventions/conventions-template.md`. Skip areas that don't apply to this project — for example:
 
 - Skip "Frontend" if there is no frontend.
 - Skip "LLM / AI integration" if the project doesn't call any model.
@@ -152,7 +152,7 @@ If the user names something Claude doesn't fully understand (e.g., a library it 
 
 **Step B — Decide whether to invoke research.**
 
-Invoke the research subskill (`commands/refine-conventions/research-prompt.md`) when ANY of:
+Invoke the research subskill (`~/.claude/prompts/refine-conventions/research-prompt.md`) when ANY of:
 
 - You have low confidence on best practice for the user's stack in this area, AND the user did not already cover the area completely in Step A.
 - The user asked "what are my options for X?" in-line for this area, or said "you propose" with no constraints.

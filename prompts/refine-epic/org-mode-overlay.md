@@ -5,7 +5,7 @@ version: 1.0.0
 # Refine Epic — Org Mode Overlay
 
 This document describes the **deltas** applied to `/refine-epic` when the `--org` flag is passed.
-The main skill in [refine-epic.md](refine-epic.md) is written for solo mode (single-author
+The main skill in `/refine-epic` is written for solo mode (single-author
 ownership). When `--org` is set, read this file at the start of the session and apply its
 overrides throughout.
 

@@ -1,4 +1,6 @@
 ---
+name: component-test
+description: "Write durable component tests — two or more real modules cooperating across one named boundary, doubling only I/O. Derives the boundary list from the diff. Use after a fix lands to deposit contract tests that fail when future unrelated changes break the wiring."
 version: 1.0.0
 ---
 
@@ -140,7 +142,7 @@ After Step 1: mark Step 1 done, Step 2 `in_progress`.
 
 ## Step 2 — Boundary Mapper (subagent, single invocation)
 
-*Delegated to:* **Boundary Mapper** subagent. Single Sonnet call. Prompt lives in [component-test/boundary-mapper-prompt.md](component-test/boundary-mapper-prompt.md).
+*Delegated to:* **Boundary Mapper** subagent. Single Sonnet call. Prompt lives in `~/.claude/prompts/component-test/boundary-mapper-prompt.md`.
 
 ### Inputs to the subagent
 
@@ -156,7 +158,7 @@ Agent({
   description: "Boundary Mapper",
   subagent_type: "general-purpose",
   model: "sonnet",
-  prompt: <full contents of component-test/boundary-mapper-prompt.md, with input section substituted>
+  prompt: <full contents of ~/.claude/prompts/component-test/boundary-mapper-prompt.md, with input section substituted>
 })
 ```
 
@@ -187,7 +189,7 @@ After Step 2: mark Step 2 done, Step 3 `in_progress`.
 
 ## Step 3 — Test Writers (subagents, parallel, one per boundary)
 
-*Delegated to:* **Test Writer** subagents. Prompt lives in [component-test/test-writer-prompt.md](component-test/test-writer-prompt.md).
+*Delegated to:* **Test Writer** subagents. Prompt lives in `~/.claude/prompts/component-test/test-writer-prompt.md`.
 
 ### Concurrency
 
@@ -245,7 +247,7 @@ After Step 3: mark Step 3 done, Step 4 `in_progress`.
 
 ## Step 4 — Negative Control (subagents + orchestrator scaffolding)
 
-*Delegated to:* **Sabotage Planner** subagents (parallel, one per active boundary). Prompt lives in [component-test/sabotage-planner-prompt.md](component-test/sabotage-planner-prompt.md). The orchestrator (not the subagent) applies the patch, runs the suite, and reverts.
+*Delegated to:* **Sabotage Planner** subagents (parallel, one per active boundary). Prompt lives in `~/.claude/prompts/component-test/sabotage-planner-prompt.md`. The orchestrator (not the subagent) applies the patch, runs the suite, and reverts.
 
 **This step is an exit condition, not a guideline.** No `SUCCESS=true` without verified negative control on every active boundary.
 
@@ -342,7 +344,7 @@ If the runner cannot be located on PATH, emit `SUCCESS=false, FAILURE_REASON=RUN
 
 If the suite run has any failures:
 
-1. Spawn a **Test Fixer** subagent (prompt: `component-test/test-fixer-prompt.md`).
+1. Spawn a **Test Fixer** subagent (prompt: `~/.claude/prompts/component-test/test-fixer-prompt.md`).
 2. Pass it: the runner failure output, all test file paths from TEST_FILES, the FRAMEWORK record, GIT_ROOT, and the `NEEDS_FIX` list (boundary IDs flagged from tautological assertion checks in Step 3).
 3. The fixer classifies each failing test as simple or non-simple, attempts fixes on simple ones (cap 2 per file), and returns a record at `$WORK_DIR/fixer-record.json`.
 4. After the fixer returns, re-run the suite.

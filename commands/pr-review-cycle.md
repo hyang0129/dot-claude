@@ -1,4 +1,6 @@
 ---
+name: pr-review-cycle
+description: "Drive review of an open PR to completion: gather findings, triage them into fix / propose / escalate, apply repairs, and verify each fix before pushing. Run after the PR is open and before /pr-finalize."
 version: 1.1.0
 ---
 

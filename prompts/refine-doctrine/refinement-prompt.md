@@ -191,7 +191,7 @@ If the anti-pattern is concrete: replace `[NEEDS ANTI-PATTERN]` with it.
 ### `[UNCHALLENGED]`
 
 Run the three challenger subagents per
-`commands/refine-doctrine/challenger-prompts.md` on this order only. Pass the
+`~/.claude/prompts/refine-doctrine/challenger-prompts.md` on this order only. Pass the
 order's full text and `CONSTITUTION_LAWS`.
 
 Run challengers sequentially or in parallel — match what `challenger-prompts.md`
@@ -252,7 +252,7 @@ a structural issue (the section heading was created but orders were not yet draf
 ```
 
 If the user wants to add orders now: run the Phase 1–4 flow from
-`commands/refine-doctrine/setup-prompt.md` inline, starting from Phase 1 (the
+`~/.claude/prompts/refine-doctrine/setup-prompt.md` inline, starting from Phase 1 (the
 anchor map should already exist from the file's Preamble or session notes). Pass
 `CONSTITUTION_LAWS` and any `DOCTRINE_CANDIDATES` from the entry point.
 
@@ -287,14 +287,14 @@ After all selected gaps are handled:
 ## Step 5 — Emit updated `DOCTRINE.md` and mini
 
 Write the updated `DOCTRINE.md` to disk, following the schema in
-`commands/refine-doctrine/doctrine-template.md`. Do not alter sections that were
+`~/.claude/prompts/refine-doctrine/doctrine-template.md`. Do not alter sections that were
 not touched this session. Preserve Retired Orders and Promoted-to-Law Log verbatim.
 
 Then check completeness (zero markers, Preamble present, ≥1 order with all four
 required fields, all anchors valid):
 
 - **If complete:** generate `DOCTRINE.mini.md` per the mini schema in
-  `commands/refine-doctrine/doctrine-template.md`.
+  `~/.claude/prompts/refine-doctrine/doctrine-template.md`.
 - **If not complete:** skip mini generation. If an existing `DOCTRINE.mini.md` is
   present from a prior run, delete it to prevent stale state.
 
@@ -319,6 +319,6 @@ ratify these as laws."
   is not doctrine.
 - Do not fabricate an Anchor when the user cannot name one.
 - Do not close the session without verifying every Anchor against `CONSTITUTION_LAWS`.
-- Reference `commands/refine-doctrine/doctrine-template.md` for the output schema.
-- Reference `commands/refine-doctrine/challenger-prompts.md` if running challenger
+- Reference `~/.claude/prompts/refine-doctrine/doctrine-template.md` for the output schema.
+- Reference `~/.claude/prompts/refine-doctrine/challenger-prompts.md` if running challenger
   subagents.
