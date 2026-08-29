@@ -31,3 +31,18 @@ Pulling the repo updates live config immediately — nothing to copy.
 - No workflow scripts, rules dirs, or hooks are added speculatively. Machinery
   earns existence only when prose has demonstrably failed.
 - Battle-tested skill text transplants verbatim; only plumbing gets rewritten.
+
+## Retiring the predecessor repo
+
+Gate first: one real run each of `/refine-issue`, `/pr-review-cycle`, and `/fix-issue`
+from this repo. Then:
+
+```bash
+mv ~/dot-claude ~/dot-claude-old
+mv ~/dot-claude-next ~/dot-claude
+~/dot-claude/install.sh        # re-points symlinks, sweeps the dangling ones
+```
+
+Delete `~/dot-claude-old` after a week. Everything without a successor here —
+including `/refine-epic` (skipped: 12 lifetime sessions didn't justify a port) —
+lives on in that repo's git history.

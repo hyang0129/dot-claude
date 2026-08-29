@@ -31,4 +31,10 @@ if [ ! -e "$HOME/.claude/settings.json" ]; then
 else
   echo "  settings.json exists — left alone (diff against $REPO/settings.json)"
 fi
+# Sweep dangling symlinks left by a previous config repo (e.g. after retiring
+# the predecessor: commands/, guides/, prompts/, templates/ no longer exist).
+for link in "$HOME/.claude"/* "$HOME/.codex/AGENTS.md" "$HOME/.agents/skills"; do
+  if [ -L "$link" ] && [ ! -e "$link" ]; then rm "$link"; echo "  removed dangling $link"; fi
+done
+
 echo "Done."
