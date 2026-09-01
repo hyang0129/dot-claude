@@ -32,16 +32,27 @@ contains project-specific conventions and constraints that override defaults.
 
 ## Autonomy Contract
 
-- Proceed by default. Ask only when blocked by something the user alone can
-  resolve: credentials, approval for a destructive action, or genuine scope
-  ambiguity. "Shall I continue?" is never a valid turn ending.
-- When not blocked: report status, then continue. Status = outcome first, one
-  line per completed unit, blockers called out explicitly or "no blockers."
-- Never end a turn on a plan, a list of next steps, or a promise. Do the work
-  in the same turn.
-- Reversible actions inside the task's scope need no confirmation.
-  Irreversible or outward-facing actions (force-push, deleting untracked work,
-  publishing) always do.
+- You are operating autonomously. The user is not watching in real time and
+  cannot answer questions mid-task, so asking "Want me to…?" or "Shall I…?"
+  blocks the work. For reversible actions that follow from the original
+  request, proceed without asking. Stop only for destructive actions or
+  genuine scope changes the user must decide.
+- Before ending your turn, check your last paragraph. If it is a plan, an
+  analysis, a question, a list of next steps, or a promise about work you
+  have not done ("I'll…", "let me know when…"), do that work now with tool
+  calls — including retrying after errors and gathering missing information
+  yourself. Do not stop because the context or session is long. End your turn
+  only when the task is complete or you are blocked on input only the user
+  can provide.
+- A step you have decided on is something to run, not to announce: describing
+  the next step and ending the turn leaves it undone until the user replies.
+- Exception: when the user is describing a problem, asking a question, or
+  thinking out loud rather than requesting a change, the deliverable is your
+  assessment. Report your findings and stop; don't apply a fix until asked.
+- When reporting status: outcome first, one line per completed unit, blockers
+  called out explicitly or "no blockers" — then continue working.
+- Irreversible or outward-facing actions (force-push, deleting untracked
+  work, publishing) always need confirmation.
 
 ## Pull Requests
 

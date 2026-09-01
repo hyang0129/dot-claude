@@ -108,13 +108,18 @@ def main():
         print(json.dumps({
             "decision": "block",
             "reason": (
-                "DoD guard: a run-to-completion directive is standing. Continue working "
-                "toward the definition of done now, in this turn. End the turn only with "
-                "'DOD: MET' plus evidence, or 'BLOCKED: <specific thing only the user can "
-                "resolve>'. Do not end on a plan, a promise, a status summary, or "
-                "continue/pause options. If you are waiting on a background task, monitor "
-                "it or do other pending work meanwhile. "
-                f"(harness-continued turn {count}/{MAX_BLOCKS})")}))
+                "DoD guard: a run-to-completion directive is standing. You are operating "
+                "autonomously — the user is not watching in real time and cannot answer "
+                "questions mid-task. Check your last paragraph: if it is a plan, an "
+                "analysis, a question, a list of next steps, or a promise about work you "
+                "have not done ('I'll…', 'let me know when…'), do that work now with tool "
+                "calls — including retrying after errors and gathering missing "
+                "information yourself. A step you have decided on is something to run, "
+                "not to announce. Do not stop because the context or session is long, "
+                "and do not offer continue/pause options. If waiting on external state, "
+                "poll it or do other pending work meanwhile. End the turn only with "
+                "'DOD: MET' plus evidence, or 'BLOCKED: <specific thing only the user "
+                f"can resolve>'. (harness-continued turn {count}/{MAX_BLOCKS})")}))
 
 
 try:
