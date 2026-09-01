@@ -1,7 +1,8 @@
 {
   "env": {
     "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1",
-    "ENABLE_PROMPT_CACHING_1H": "1"
+    "ENABLE_PROMPT_CACHING_1H": "1",
+    "CLAUDE_CODE_STOP_HOOK_BLOCK_CAP": "30"
   },
   "permissions": {
     "allow": [
@@ -63,6 +64,28 @@
           }
         ]
       }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/dod-stop-guard.py\"",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$HOME/.claude/hooks/dod-stop-guard.py\"",
+            "timeout": 15
+          }
+        ]
+      }
     ]
   },
   "extraKnownMarketplaces": {
@@ -76,5 +99,6 @@
   "enabledPlugins": {
     "ponytail@ponytail": true
   },
-  "model": "sonnet"
+  "model": "sonnet",
+  "cleanupPeriodDays": 365
 }
