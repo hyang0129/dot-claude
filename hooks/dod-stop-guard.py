@@ -86,6 +86,15 @@ def main():
             if m.group(1) == "DOD: MET":
                 os.remove(flag)
             return
+        # legit wait: background subagents/tasks re-invoke the session on
+        # completion, and the next Stop gets checked again — allow, stay armed
+        tasks = payload.get("background_tasks") or []
+        if any(not isinstance(t, dict)
+               or t.get("status") in (None, "running", "pending")
+               for t in tasks):
+            with open(flag, "w") as f:
+                f.write("0")
+            return
         count = read_count(flag) + 1
         if count > MAX_BLOCKS:
             # ponytail: hard cap instead of smarter loop detection; raise if real
