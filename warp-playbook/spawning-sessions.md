@@ -1,5 +1,13 @@
 # Spawning Visible Claude Code Sessions (in Warp tabs)
 
+> **Headless fan-out?** If you are spawning agents non-interactively (ssh + tmux, cron, CI)
+> rather than as visible Warp tabs, read
+> [`guides/headless-agent-orchestration.md`](../guides/headless-agent-orchestration.md) first.
+> It documents four failure modes that cost an hour on 2026-08-31 — agents dying because they
+> backgrounded a command and ended the turn, health checks that report running agents when
+> none exist, nested `ssh` quoting silently producing a broken launcher, and `pkill -f`
+> killing its own session — plus a pre-flight checklist.
+
 **This is the primary mechanism.** It lets this Claude session open **Claude Code** agent sessions
 you can *see and take over*, as **new tabs in the window you're already in** — no manual GUI work, no
 cloud credits.
