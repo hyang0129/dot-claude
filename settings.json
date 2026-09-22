@@ -99,6 +99,6 @@
   "enabledPlugins": {
     "ponytail@ponytail": true
   },
-  "model": "sonnet",
+  "model": "opus-5-5",
   "cleanupPeriodDays": 365
 }
