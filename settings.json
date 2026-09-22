@@ -70,5 +70,5 @@
       }
     ]
   },
-  "model": "claude-sonnet-4-6"
+  "model": "opus-5-5"
 }
